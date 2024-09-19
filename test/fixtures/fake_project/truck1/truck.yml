@@ -1,0 +1,7 @@
+strict: false
+input:
+  connection: pgconn
+  table: public.whiskies
+output:
+  connection: pgconn
+  table: public.whiskies_flat

@@ -1,0 +1,51 @@
+package config
+
+import (
+	"testing"
+)
+
+func TestLoadConfig(t *testing.T) {
+	config := Load("../../test/fixtures/fake_project/trucker.yml")
+
+	if config.ExitOnError != "false" {
+		t.Error("Expected exit_on_error = false, got", config.ExitOnError)
+	}
+
+	if len(config.Connections) != 1 {
+		t.Error("Expected 1 connection, got", len(config.Connections))
+	}
+
+	conn := config.Connections["pgconn"]
+
+	if conn.Name != "pgconn" {
+		t.Error("Expected connection name = pgconn, got", conn.Name)
+	}
+
+	if conn.Adapter != "postgres" {
+		t.Error("Expected connection adapter = postgres, got", conn.Adapter)
+	}
+
+	if conn.Host != "localhost" {
+		t.Error("Expected connection host = localhost, got", conn.Host)
+	}
+
+	if conn.Port != 0 {
+		t.Error("Expected connection port = 0, got", conn.Port)
+	}
+
+	if conn.Database != "postgres" {
+		t.Error("Expected connection database = postgres, got", conn.Database)
+	}
+
+	if conn.User != "postgres" {
+		t.Error("Expected connection user = postgres, got", conn.User)
+	}
+
+	if conn.Pass != "pgpass" {
+		t.Error("Expected connection pass = pgpass, got", conn.Pass)
+	}
+
+	if conn.ReplicaHost != "w.x.y.z" {
+		t.Error("Expected connection replica_host = w.x.y.z, got", conn.ReplicaHost)
+	}
+}
