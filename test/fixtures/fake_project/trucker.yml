@@ -2,9 +2,9 @@ exit_on_error: false
 connections:
 - name: pgconn
   adapter: postgres
-  host: {{ or .PG_HOST "localhost" }}
-  database: postgres
-  user: postgres
+  host: {{ or .PG_HOST "postgres" }}
+  database: trucker
+  user: trucker
   pass: pgpass
   replica_host: a.b.c.d
   replica_host_path: ../replica_host_secret

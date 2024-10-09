@@ -25,7 +25,7 @@ func TestLoadConfig(t *testing.T) {
 		t.Error("Expected connection adapter = postgres, got", conn.Adapter)
 	}
 
-	if conn.Host != "localhost" {
+	if conn.Host != "postgres" {
 		t.Error("Expected connection host = localhost, got", conn.Host)
 	}
 
@@ -33,12 +33,12 @@ func TestLoadConfig(t *testing.T) {
 		t.Error("Expected connection port = 0, got", conn.Port)
 	}
 
-	if conn.Database != "postgres" {
-		t.Error("Expected connection database = postgres, got", conn.Database)
+	if conn.Database != "trucker" {
+		t.Error("Expected connection database = trucker, got", conn.Database)
 	}
 
-	if conn.User != "postgres" {
-		t.Error("Expected connection user = postgres, got", conn.User)
+	if conn.User != "trucker" {
+		t.Error("Expected connection user = trucker, got", conn.User)
 	}
 
 	if conn.Pass != "pgpass" {

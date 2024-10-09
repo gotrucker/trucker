@@ -34,10 +34,6 @@ func TestLoadTrucks(t *testing.T) {
 	t.Error("Expected pgconn WriterCount to be incremented to 1, got", writers)
 	}
 
-	if truck.Strict != false {
-		t.Error("Expected exit_on_error = false, got", truck.Strict)
-	}
-
 	if truck.Input.Connection != "pgconn" {
 		t.Error("Expected input connection = pgconn, got", truck.Input.Connection)
 	}

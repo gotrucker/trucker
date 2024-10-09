@@ -9,14 +9,15 @@ import (
 
 type Truck struct {
 	Name string
-	Strict bool `yaml:"strict,omitempty"`
 	Input struct {
 		Connection string `yaml:"connection,omitempty"`
+		Schema     string `yaml:"schema,omitempty"`
 		Table      string `yaml:"table,omitempty"`
 		Sql        string
 	} `yaml:"input"`
 	Output struct {
 		Connection string `yaml:"connection,omitempty"`
+		Schema     string `yaml:"schema,omitempty"`
 		Table      string `yaml:"table,omitempty"`
 		Sql        string
 	} `yaml:"output"`
@@ -31,7 +32,6 @@ func LoadTrucks(projectPath string, cfg Config) []Truck {
 	trucks := make([]Truck, 1, 1)
 	for i, ymlPath := range ymlPaths {
 		trucks[i] = loadTruck(ymlPath, cfg)
-
 	}
 
 	return trucks
@@ -58,20 +58,23 @@ func loadTruck(path string, cfg Config) Truck {
 	}
 
 	if connectionCfg, ok := cfg.Connections[truck.Input.Connection]; ok {
-		connectionCfg.ReaderCount += 2
+		connectionCfg.ReaderCount += 2 // 1 for replication and 1 for queries
+		connectionCfg.WriterCount += 1 // 1 for setting up and updating replication slot
 		cfg.Connections[truck.Input.Connection] = connectionCfg
 	}
 
 	if connectionCfg, ok := cfg.Connections[truck.Output.Connection]; ok {
-		connectionCfg.WriterCount += 1
+		connectionCfg.WriterCount += 1 // 1 for writing to the output db
 		cfg.Connections[truck.Output.Connection] = connectionCfg
 	}
 
 	log.Printf(
-		"Configured truck: %s.%s -> %s.%s\nInput SQL:\n%s\nOutput SQL:\n%s\n\n",
+		"Configured truck: %s.%s.%s -> %s.%s.%s\nInput SQL:\n%s\nOutput SQL:\n%s\n\n",
 		truck.Input.Connection,
+		truck.Input.Schema,
 		truck.Input.Table,
 		truck.Output.Connection,
+		truck.Output.Schema,
 		truck.Output.Table,
 		truck.Input.Sql,
 		truck.Output.Sql,

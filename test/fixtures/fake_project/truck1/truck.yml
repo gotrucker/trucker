@@ -1,7 +1,8 @@
-strict: false
 input:
   connection: pgconn
-  table: public.whiskies
+  schema: public
+  table: whiskies
 output:
   connection: pgconn
-  table: public.whiskies_flat
+  schema: public
+  table: whiskies_flat

@@ -31,7 +31,8 @@ func main() {
 	for _, truckCfg := range truckCfgs {
 		stopChan := make(chan any)
 		stopChans[truckCfg.Name] = stopChan
-		truck.Start(truckCfg, dbConnections, stopChan, stoppedChan)
+		truck := truck.NewTruck(truckCfg, dbConnections, stopChan, stoppedChan)
+		truck.Start()
 	}
 
 	if len(truckCfgs) > 0 {

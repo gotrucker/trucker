@@ -11,12 +11,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type connectionPool pgxpool.Pool
+type ConnectionPool pgxpool.Pool
 
 const defaultSliceCapacity = 32
 const minimumPoolSize = 2
 
-func NewConnectionPool(user string, pass string, host string, port uint16, database string, poolSize uint16) *connectionPool {
+func NewConnectionPool(user string, pass string, host string, port uint16, database string, poolSize uint16) *ConnectionPool {
 	if port == 0 {
 		port = 5432
 	}
@@ -37,10 +37,10 @@ func NewConnectionPool(user string, pass string, host string, port uint16, datab
 		os.Exit(1)
 	}
 
-	return (*connectionPool)(pool)
+	return (*ConnectionPool)(pool)
 }
 
-func (pool *connectionPool) Query(query string) ([]map[string]any, error) {
+func (pool *ConnectionPool) Query(sql string, args ...any) ([]map[string]any, error) {
 	conn, err := (*pgxpool.Pool)(pool).Acquire(context.Background())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to acquire connection: %v\n", err)
@@ -48,7 +48,7 @@ func (pool *connectionPool) Query(query string) ([]map[string]any, error) {
 	}
 	defer conn.Release()
 
-	rows, err := conn.Query(context.Background(), query)
+	rows, err := conn.Query(context.Background(), sql, args...)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Query failed: %v\n", err)
 		return nil, err
@@ -59,8 +59,12 @@ func (pool *connectionPool) Query(query string) ([]map[string]any, error) {
 	return scanRows(rows)
 }
 
-func (pool *connectionPool) Disconnect() {
+func (pool *ConnectionPool) Disconnect() {
 	(*pgxpool.Pool)(pool).Close()
+}
+
+func (pool *ConnectionPool) ConcretePool() *pgxpool.Pool {
+	return (*pgxpool.Pool)(pool)
 }
 
 func enforceMinimumPoolSize(maxConns int32) int32 {

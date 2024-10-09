@@ -1,0 +1,78 @@
+volumes:
+  pg_input-data:
+  pg_input_replica-data:
+  pg_output-data:
+
+services:
+  go:
+    build:
+      target: dev
+    user: $UID:$GID
+    volumes:
+    - $PWD:/app
+    environment:
+      GOCACHE: /tmp/go-cache
+    env_file:
+    - .env
+    working_dir: /app
+    depends_on:
+    - pg_input
+    - pg_input_replica
+    - pg_output
+    command: sleep infinity
+
+  pg_input:
+    build:
+      dockerfile: Dockerfile.pg
+    image: pg-with-wal2json
+    volumes:
+    - pg_input-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: trucker
+      POSTGRES_PASSWORD: ignore_this # no need to use the password for auth, since we set the auth method to "trust"
+      POSTGRES_HOST_AUTH_METHOD: "trust\nhost replication all 0.0.0.0/0 trust"
+    command:
+    - -cwal_level=logical
+    - -cmax_wal_senders=10
+    - -cmax_replication_slots=10
+    - -chot_standby_feedback=on
+    - -clog_statement=all
+
+  pg_input_replica:
+    image: pg-with-wal2json
+    volumes:
+    - pg_input_replica-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: trucker
+      POSTGRES_PASSWORD: ignore_this # no need to use the password for auth, since we set the auth method to "trust"
+      POSTGRES_HOST_AUTH_METHOD: "trust\nhost replication all 0.0.0.0/0 trust"
+    depends_on:
+    - pg_input
+    command: |
+      bash -c "
+      rm -rf /var/lib/postgresql/data
+      until pg_basebackup --pgdata=/var/lib/postgresql/data -R --host=pg_input -U trucker
+      do
+      echo 'Waiting for primary to connect...'
+      sleep 1s
+      done
+      echo 'Backup done, starting replica...'
+      chmod 0700 /var/lib/postgresql/data
+      chown -R postgres /var/lib/postgresql/data
+      su postgres -c 'postgres -cwal_level=logical -cmax_wal_senders=10 -cmax_replication_slots=10 -chot_standby=on -crecovery_target_timeline=latest -clog_statement=all'
+      "
+
+  pg_output:
+    image: pg-with-wal2json
+    volumes:
+    - pg_output-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: trucker
+      POSTGRES_PASSWORD: ignore_this # no need to use the password for auth, since we set the auth method to "trust"
+      POSTGRES_HOST_AUTH_METHOD: "trust\nhost replication all 0.0.0.0/0 trust"
+    depends_on:
+    - pg_input
+    command:
+    - -cwal_level=minimal
+    - -cmax_wal_senders=0
+    - -clog_statement=all

@@ -1,8 +1,12 @@
 package db
 
 type ConnectionPool interface {
-	Query(query string) ([]map[string]any, error)
+	Query(sql string, args ...any) ([]map[string]any, error)
 	Disconnect()
+	ConcretePool() any
+}
+
+type ReplicationConn interface {
 }
 
 type Db struct {
