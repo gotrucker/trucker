@@ -13,7 +13,6 @@ import (
 	"github.com/tonyfg/trucker/pkg/truck"
 )
 
-const outputPlugin = "wal2json"
 const projectPath = "test/fixtures/fake_project"
 
 func main() {
@@ -25,6 +24,7 @@ func main() {
 	dbConnections := connectDatabases(cfg.Connections)
 	defer disconnectDatabases(dbConnections)
 
+	trucksByInputConnection := make(map[string][]truck.Truck)
 	stoppedChan := make(chan truck.ExitMsg, len(truckCfgs))
 	stopChans := make(map[string]chan any, 0)
 
@@ -32,7 +32,8 @@ func main() {
 		stopChan := make(chan any)
 		stopChans[truckCfg.Name] = stopChan
 		truck := truck.NewTruck(truckCfg, dbConnections, stopChan, stoppedChan)
-		truck.Start()
+		trucksByInputConnection[truckCfg.Input.Connection] = append(trucksByInputConnection[truckCfg.Input.Connection], truck)
+		// truck.Start() // We need to handle backfills first
 	}
 
 	if len(truckCfgs) > 0 {
@@ -71,10 +72,6 @@ func connectDatabases(connectionCfgs map[string]config.Connection) map[string]db
 	connections := make(map[string]db.Db)
 
 	for _, connectionCfg := range connectionCfgs {
-		if connectionCfg.ReaderCount == 0 && connectionCfg.WriterCount == 0 {
-			continue
-		}
-
 		if connectionCfg.Adapter == "postgres" {
 			connections[connectionCfg.Name] = pgConnect(connectionCfg)
 		} else {
@@ -98,36 +95,15 @@ func disconnectDatabases(connections map[string]db.Db) {
 func pgConnect(connectionCfg config.Connection) db.Db {
 	database := db.Db{}
 
-	if connectionCfg.ReplicaHost != "" {
-		database.Write = pg.NewConnectionPool(
-			connectionCfg.User,
-			connectionCfg.Pass,
-			connectionCfg.Host,
-			connectionCfg.Port,
-			connectionCfg.Database,
-			connectionCfg.WriterCount,
-		)
+	database.Write = pg.NewConnectionPool(
+		connectionCfg.User,
+		connectionCfg.Pass,
+		connectionCfg.Host,
+		connectionCfg.Port,
+		connectionCfg.Database,
+	)
 
-		database.Read = pg.NewConnectionPool(
-			connectionCfg.User,
-			connectionCfg.Pass,
-			connectionCfg.ReplicaHost,
-			connectionCfg.ReplicaPort,
-			connectionCfg.Database,
-			connectionCfg.ReaderCount,
-		)
-	} else {
-		database.Write = pg.NewConnectionPool(
-			connectionCfg.User,
-			connectionCfg.Pass,
-			connectionCfg.Host,
-			connectionCfg.Port,
-			connectionCfg.Database,
-			connectionCfg.WriterCount+connectionCfg.ReaderCount,
-		)
-
-		database.Read = database.Write
-	}
+	database.Read = database.Write
 
 	return database
 }

@@ -1,28 +1,35 @@
+DROP SCHEMA public CASCADE;
+CREATE SCHEMA public;
+
 CREATE TABLE public.countries (
-  id SERIAL PRIMARY KEY,
-  name TEXT NOT NULL
+  id int PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  name text NOT NULL
 );
 
 CREATE TABLE public.whisky_types (
-  id SERIAL PRIMARY KEY,
-  name TEXT NOT NULL,
-  country_id INTEGER NOT NULL REFERENCES countries(id)
+  id int PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  name text NOT NULL,
+  country_id int NOT NULL REFERENCES countries(id)
 );
 
 CREATE TABLE public.whiskies (
-  id SERIAL PRIMARY KEY,
-  name TEXT NOT NULL,
-  age INTEGER NOT NULL,
-  whisky_type_id INTEGER NOT NULL REFERENCES whisky_types(id)
+  id int PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+  name text NOT NULL,
+  age int NOT NULL,
+  whisky_type_id int NOT NULL REFERENCES whisky_types(id)
 );
 
 CREATE TABLE public.whiskies_flat (
-  id INTEGER PRIMARY KEY,
-  name TEXT NOT NULL,
-  age INTEGER NOT NULL,
-  type TEXT NOT NULL,
-  country TEXT NOT NULL
+  id int PRIMARY KEY,
+  name text NOT NULL,
+  age int NOT NULL,
+  type text NOT NULL,
+  country text NOT NULL
 );
+
+ALTER TABLE public.countries REPLICA IDENTITY FULL;
+ALTER TABLE public.whisky_types REPLICA IDENTITY FULL;
+ALTER TABLE public.whisky_types REPLICA IDENTITY FULL;
 
 INSERT INTO public.countries (name)
 VALUES ('Portugal'), ('Scotland'), ('Ireland'), ('Japan'), ('USA');
@@ -31,4 +38,4 @@ INSERT INTO public.whisky_types (name, country_id)
 VALUES ('Bourbon', 5), ('Japanese', 4), ('Triple Distilled', 3), ('Single Malt', 2), ('Salty', 1);
 
 INSERT INTO public.whiskies (name, age, whisky_type_id)
-VALUES ('Glenfiddich', 15, 4);
+VALUES ('Glenfiddich', 15, 4), ('Lagavulin', 12, 3), ('Hibiki', 17, 2), ('Laphroaig', 10, 5);

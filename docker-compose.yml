@@ -11,7 +11,7 @@ services:
     volumes:
     - $PWD:/app
     environment:
-      GOCACHE: /tmp/go-cache
+      GOCACHE: /app/tmp/go-cache
     env_file:
     - .env
     working_dir: /app

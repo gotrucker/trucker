@@ -27,7 +27,6 @@ type Truck struct {
 	InputTable string
 	InputSql string
 	OutputConn  db.ConnectionPool
-	OutputTable string
 	OutputSql string
 	KillChan chan any
 	ExitedChan chan ExitMsg
@@ -41,7 +40,6 @@ func NewTruck(cfg config.Truck, dbConnections map[string]db.Db, killChan chan an
 		InputTable: cfg.Input.Table,
 		InputSql: cfg.Input.Sql,
 		OutputConn: dbConnections[cfg.Output.Connection].Write,
-		OutputTable: cfg.Output.Table,
 		OutputSql: cfg.Output.Sql,
 		KillChan: killChan,
 		ExitedChan: exitedChan,
@@ -88,13 +86,13 @@ func (t *Truck) setupReplication() {
 	sql := fmt.Sprintf("CREATE PUBLICATION %s FOR TABLE %s;", publicationName, t.InputTable)
 	result, err := t.InputWriteConn.Query(sql)
 	if err != nil {
-		log.Fatalln("[Truck %s] Error creating publication:", err)
+		log.Fatalln("[Truck] Error creating publication:", err)
 	}
 	fmt.Printf("Create publication result: %v", result)
 
 	physicalConn, err := t.InputWriteConn.ConcretePool().(*pgxpool.Pool).Acquire(context.Background())
 	if err != nil {
-		log.Fatalln("[Truck %s] Error acquiring connection from pool:", err)
+		log.Fatalln("[Truck] Error acquiring connection from pool:", err)
 	}
 	defer physicalConn.Release()
 

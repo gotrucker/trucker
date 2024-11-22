@@ -17,25 +17,18 @@ type connectionYml struct {
 	Database        string `yaml:"database,omitempty"`
 	User            string `yaml:"user,omitempty"`
 	Pass            string `yaml:"pass,omitempty"`
-	ReplicaHost     string `yaml:"replica_host,omitempty"`
-	ReplicaPort     uint16 `yaml:"replica_port,omitempty"`
 	HostPath        string `yaml:"host_path,omitempty"`
 	PortPath        string `yaml:"port_path,omitempty"`
 	DatabasePath    string `yaml:"database_path,omitempty"`
 	UserPath        string `yaml:"user_path,omitempty"`
 	PassPath        string `yaml:"pass_path,omitempty"`
-	ReplicaHostPath string `yaml:"replica_host_path,omitempty"`
-	ReplicaPortPath string `yaml:"replica_port_path,omitempty"`
 }
 
 type configYml struct {
-	ExitOnError string          `yaml:"exit_on_error,omitempty"`
 	Connections []connectionYml `yaml:"connections"`
 }
 
 type Connection struct {
-	ReaderCount uint16
-	WriterCount uint16
 	Name        string
 	Adapter     string
 	Host        string
@@ -43,12 +36,9 @@ type Connection struct {
 	Database    string
 	User        string
 	Pass        string
-	ReplicaHost string
-	ReplicaPort uint16
 }
 
 type Config struct {
-	ExitOnError string
 	Connections map[string]Connection
 }
 
@@ -61,7 +51,6 @@ func Load(path string) Config {
 	configYml := loadYml(path, configYml{}, envMap)
 
 	config := Config{
-		ExitOnError: configYml.ExitOnError,
 		Connections: make(map[string]Connection),
 	}
 
@@ -87,8 +76,6 @@ func connectionYmlToConnection(connYml connectionYml, basePath string) Connectio
 		Database:    connYml.Database,
 		User:        connYml.User,
 		Pass:        connYml.Pass,
-		ReplicaHost: connYml.ReplicaHost,
-		ReplicaPort: connYml.ReplicaPort,
 	}
 
 	if connYml.HostPath != "" {
@@ -116,21 +103,6 @@ func connectionYmlToConnection(connYml connectionYml, basePath string) Connectio
 
 	if connYml.PassPath != "" {
 		connection.Pass = readFile(basePath, connYml.PassPath)
-	}
-
-	if connYml.ReplicaHostPath != "" {
-		connection.ReplicaHost = readFile(basePath, connYml.ReplicaHostPath)
-	}
-
-	if connYml.ReplicaPortPath != "" {
-		replicaPortStr := readFile(basePath, connYml.ReplicaPortPath)
-
-		replicaPort, err := strconv.ParseUint(replicaPortStr, 10, 16)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		connection.ReplicaPort = uint16(replicaPort)
 	}
 
 	return connection

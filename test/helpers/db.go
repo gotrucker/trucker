@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/tonyfg/trucker/pkg/config"
 )
@@ -15,10 +15,25 @@ import (
 var (
     _, b, _, _ = runtime.Caller(0)
     Basepath   = filepath.Dir(b)
+	ConnectionCfg = config.Connection{
+		Name:     "test",
+		Adapter:  "pg",
+		Host:     "pg_input",
+		Port:     5432,
+		Database: "trucker",
+		User:     "trucker",
+	}
 )
 
 
-func Connect(connectionCfg config.Connection) *pgx.Conn {
+func PrepareTestDb() *pgxpool.Pool {
+	conn := Connect(ConnectionCfg)
+	LoadTestDb(conn)
+	return conn
+}
+
+
+func Connect(connectionCfg config.Connection) *pgxpool.Pool {
 	connString := fmt.Sprintf(
 		"postgres://%s:%s@%s:%d/%s",
 		connectionCfg.User,
@@ -27,28 +42,25 @@ func Connect(connectionCfg config.Connection) *pgx.Conn {
 		connectionCfg.Port,
 		connectionCfg.Database)
 
-	conn, err := pgx.Connect(context.Background(), connString)
+	config, err := pgxpool.ParseConfig(connString)
 	if err != nil {
-		panic(err)
+		fmt.Fprintf(os.Stderr, "Unable to parse connection string: %v\n", err)
+		os.Exit(1)
 	}
 
-	return conn
+	pool, err := pgxpool.NewWithConfig(context.Background(), config)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Unable to create connection pool: %v\n", err)
+		os.Exit(1)
+	}
+
+	return pool
 }
 
 
-func LoadTestDb(conn *pgx.Conn) {
-	ClearTestDb(conn)
+func LoadTestDb(conn *pgxpool.Pool) {
 	sql := ReadTestDbSql()
-	result := conn.PgConn().Exec(context.Background(), sql)
-	result.ReadAll()
-}
-
-
-func ClearTestDb(conn *pgx.Conn) {
-	result := conn.PgConn().Exec(
-		context.Background(),
-		"DROP SCHEMA public CASCADE; CREATE SCHEMA public;")
-	result.ReadAll()
+	conn.Exec(context.Background(), sql)
 }
 
 

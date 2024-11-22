@@ -7,10 +7,6 @@ import (
 func TestLoadConfig(t *testing.T) {
 	config := Load("../../test/fixtures/fake_project/trucker.yml")
 
-	if config.ExitOnError != "false" {
-		t.Error("Expected exit_on_error = false, got", config.ExitOnError)
-	}
-
 	if len(config.Connections) != 1 {
 		t.Error("Expected 1 connection, got", len(config.Connections))
 	}
@@ -43,9 +39,5 @@ func TestLoadConfig(t *testing.T) {
 
 	if conn.Pass != "pgpass" {
 		t.Error("Expected connection pass = pgpass, got", conn.Pass)
-	}
-
-	if conn.ReplicaHost != "w.x.y.z" {
-		t.Error("Expected connection replica_host = w.x.y.z, got", conn.ReplicaHost)
 	}
 }
