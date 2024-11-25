@@ -17,8 +17,7 @@ func TestRead(t *testing.T) {
 		{3, "Hibiki", 17, 2},
 	}
 
-	valuesLiteral, values := valuesToLiteral(columns, rows)
-	cols, vals := r.Read("insert", valuesLiteral.String(), values)
+	cols, vals := r.Read("insert", columns, rows)
 
 	expectedCols := []string{"op", "id", "name", "age", "type"}
 	if !reflect.DeepEqual(cols, expectedCols) {

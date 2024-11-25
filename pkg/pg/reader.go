@@ -25,10 +25,11 @@ func NewReader(readQuery string, pool *pgxpool.Pool) *Reader {
 // - transform the input args into a postgres values literal
 // - feed that to the template as a .rows variable
 // - run the query with values args and return the result
-func (r *Reader) Read(operation string, valuesStr string, values []any) ([]string, [][]any) {
+func (r *Reader) Read(operation string, columns []string, rowValues [][]any) ([]string, [][]any) {
+	valuesLiteral, values := makeValuesLiteral(columns, rowValues)
 	tmplVars := map[string]string{
 		"operation": operation,
-		"rows":      valuesStr,
+		"rows":      valuesLiteral.String(),
 	}
 	sql := new(bytes.Buffer)
 	err := r.queryTemplate.Execute(sql, tmplVars)

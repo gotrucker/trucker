@@ -62,7 +62,7 @@ ON CONFLICT (id) DO UPDATE SET lsn = '%s'`, w.currentLsnTable, lsn, lsn)
 }
 
 func (w *Writer) Write(columns []string, values [][]any) {
-	valuesLiteral, flatValues := valuesToLiteral(columns, values)
+	valuesLiteral, flatValues := makeValuesLiteral(columns, values)
 
 	tmplVars := map[string]string{"rows": valuesLiteral.String()}
 	sql := new(bytes.Buffer)

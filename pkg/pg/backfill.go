@@ -4,14 +4,17 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strings"
 )
 
 const backfillBatchSize = 5000
 
-func (client *ReplicationClient) StreamBackfillData(table string, snapshotName string) chan *TableChanges {
-	schemaAndTable := strings.Split(table, ".")
-	changesChan := make(chan *TableChanges)
+type BackfillBatch struct {
+	Columns []string
+	Rows    [][]any
+}
+
+func (client *ReplicationClient) StreamBackfillData(table string, snapshotName string) chan *BackfillBatch {
+	changesChan := make(chan *BackfillBatch)
 
 	go func() {
 		defer close(changesChan)
@@ -25,6 +28,10 @@ func (client *ReplicationClient) StreamBackfillData(table string, snapshotName s
 			panic(err)
 		}
 
+		// TODO: Reading rows from the table to then use them again in the input
+		//       query is not ideal. Maybe in the future we can find a way to
+		//       directly use the table itself on the input query (just for the
+		//       backfill of course)
 		rows, err := client.conn.Query(context.Background(), fmt.Sprintf("SELECT * FROM %s", table))
 		if err != nil {
 			log.Fatalf("Query failed: %v\n", err)
@@ -37,7 +44,7 @@ func (client *ReplicationClient) StreamBackfillData(table string, snapshotName s
 			columns[i] = field.Name
 		}
 
-		fakeWallChanges := make([]WalChange, 0, backfillBatchSize)
+		rowValues := make([][]any, 0, 1)
 
 		for i := 0; rows.Next(); i++ {
 			values, err := rows.Values()
@@ -45,37 +52,16 @@ func (client *ReplicationClient) StreamBackfillData(table string, snapshotName s
 				panic(err)
 			}
 
-			sqlValues := make([]sqlValue, len(columns))
-			for j := range columns {
-				strVal := fmt.Sprintf("%v", values[j])
-				sqlValues[j] = sqlValue(strVal)
-			}
-
-			fakeWallChanges = append(fakeWallChanges, WalChange{
-				Kind: "insert",
-				Schema: schemaAndTable[0],
-				Table: schemaAndTable[1],
-				ColumnNames: columns,
-				ColumnValues: sqlValues,
-			})
+			rowValues = append(rowValues, values)
 
 			if i >= backfillBatchSize {
-				fakeWalData := &WalData{
-					Changes: fakeWallChanges,
-				}
-
-				changes := walDataToSqlValues(fakeWalData)[table]
-				changesChan <- changes
+				changesChan <- &BackfillBatch{Columns: columns, Rows: rowValues}
+				rowValues = make([][]any, 0, len(rowValues))
 				i = 0
 			}
 		}
 
-		fakeWalData := &WalData{
-			Changes: fakeWallChanges,
-		}
-
-		changes := walDataToSqlValues(fakeWalData)[table]
-		changesChan <- changes
+		changesChan <- &BackfillBatch{Columns: columns, Rows: rowValues}
 	}()
 
 	return changesChan

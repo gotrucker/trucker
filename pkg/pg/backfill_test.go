@@ -26,28 +26,20 @@ func TestStreamBackfillData(t *testing.T) {
 	changesChan := rc.StreamBackfillData("public.countries", snapshotName)
 	select {
 	case res := <-changesChan:
-		expectedSql := "(VALUES ($1,$2), ($3,$4), ($5,$6), ($7,$8), ($9,$10)) AS rows ($11,$12)"
-		sql := res.InsertSql.String()
-		if sql != expectedSql {
-			t.Errorf("Expected InsertSql to be '%s' but got '%s'", expectedSql, sql)
-		}
-
 		expectedInsertCols := []string{"id", "name"}
-		if !reflect.DeepEqual(res.InsertCols, expectedInsertCols) {
-			t.Errorf("Expected InsertCols to be %v but got %v", expectedInsertCols, res.InsertCols)
+		if !reflect.DeepEqual(res.Columns, expectedInsertCols) {
+			t.Errorf("Expected InsertCols to be %v but got %v", expectedInsertCols, res.Columns)
 		}
 
-		expectedValues := []sqlValue{"1", "Portugal", "2", "Scotland", "3", "Ireland", "4", "Japan", "5", "USA"}
-		if !reflect.DeepEqual(res.InsertValues, expectedValues) {
-			t.Errorf("Expected Values to be %v but got %v", expectedValues, res.InsertValues)
+		expectedValues := [][]any{
+			{int32(1), "Portugal"},
+			{int32(2), "Scotland"},
+			{int32(3), "Ireland"},
+			{int32(4), "Japan"},
+			{int32(5), "USA"},
 		}
-
-		if res.UpdateSql != nil || res.UpdateCols != nil || res.UpdateValues != nil {
-			t.Error("Expected UpdateSql, UpdateCols, and UpdateValues to be nil")
-		}
-
-		if res.DeleteSql != nil || res.DeleteCols != nil || res.DeleteValues != nil {
-			t.Error("Expected DeleteSql, DeleteCols, and DeleteValues to be nil")
+		if !reflect.DeepEqual(res.Rows, expectedValues) {
+			t.Errorf("Expected Values to be %v but got %v", expectedValues, res.Rows)
 		}
 	case <-time.After(100 * time.Millisecond):
 		t.Error("Reading from channel took too long...")

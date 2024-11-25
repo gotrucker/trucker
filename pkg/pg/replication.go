@@ -63,7 +63,7 @@ func (client *ReplicationClient) Setup() ([]string, pglogrepl.LSN, string) {
 	return newTables, backfillLSN, snapshotName
 }
 
-func (client *ReplicationClient) Start(startLSN pglogrepl.LSN) chan map[string]*TableChanges {
+func (client *ReplicationClient) Start(startLSN pglogrepl.LSN) chan map[string]*Changeset {
 	if client.running {
 		log.Fatalln("Replication is already running")
 	}
@@ -82,7 +82,7 @@ func (client *ReplicationClient) Start(startLSN pglogrepl.LSN) chan map[string]*
 	}
 	log.Println("Logical replication started on slot", client.publicationName)
 
-	changes := make(chan map[string]*TableChanges)
+	changes := make(chan map[string]*Changeset)
 	client.running = true
 
 	go func() {
@@ -162,9 +162,7 @@ func (client *ReplicationClient) Start(startLSN pglogrepl.LSN) chan map[string]*
 					log.Fatalln("ParseXLogData failed:", err)
 				}
 
-				log.Printf("wal2json tx LSN: %s / %s\n", xld.WALStart, xld.ServerWALEnd)
-				log.Printf("wal2json data: %s\n", xld.WALData)
-				changes <- wal2jsonToSqlValues(xld.WALData)
+				changes <- makeChangesets(xld.WALData)
 
 				if xld.WALStart > clientXLogPos {
 					clientXLogPos = xld.WALStart
