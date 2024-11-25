@@ -1,6 +1,7 @@
 package pg
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
@@ -9,7 +10,7 @@ import (
 
 func TestRead(t *testing.T) {
 	r := readerTestSetup()
-	defer r.conn.Close()
+	defer r.conn.Close(context.Background())
 
 	columns := []string{"id", "name", "age", "whisky_type_id"}
 	rows := [][]any{

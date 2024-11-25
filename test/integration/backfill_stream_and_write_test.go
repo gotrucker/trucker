@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/tonyfg/trucker/test/helpers"
 	"github.com/tonyfg/trucker/pkg/pg"
@@ -14,7 +14,7 @@ import (
 
 func TestStreamBackfillReadAndWrite(t *testing.T) {
 	conn := helpers.PrepareTestDb()
-	defer conn.Close()
+	defer conn.Close(context.Background())
 	rc := pg.NewReplicationClient([]string{"public.whiskies"}, helpers.ConnectionCfg)
 
 	r := pg.NewReader(
@@ -124,7 +124,7 @@ got %T %v`, expectedRows, expectedRows, rows, rows)
 	}
 }
 
-func loadWhiskiesFlat(t *testing.T, conn *pgxpool.Pool) ([]string, [][]any) {
+func loadWhiskiesFlat(t *testing.T, conn *pgx.Conn) ([]string, [][]any) {
 	rows, err := conn.Query(
 		context.Background(),
 		"SELECT name, age, type, country FROM public.whiskies_flat",

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net/url"
 	"strings"
 	"time"
 
@@ -344,29 +343,14 @@ func (client *ReplicationClient) createReplicationSlot(temporary bool) string {
 }
 
 func (client *ReplicationClient) connect(replication bool) *pgx.Conn {
-	replicationStr := ""
-	host := client.connCfg.Host
-	port := client.connCfg.Port
-
-	if replication {
-		replicationStr = "?replication=database"
-	}
-
-	connString := fmt.Sprintf(
-		"postgres://%s:%s@%s:%d/%s%s",
+	return NewConnection(
 		client.connCfg.User,
-		url.QueryEscape(client.connCfg.Pass),
-		host,
-		port,
+		client.connCfg.Pass,
+		client.connCfg.Host,
+		client.connCfg.Port,
 		client.connCfg.Database,
-		replicationStr)
-
-	conn, err := pgx.Connect(context.Background(), connString)
-	if err != nil {
-		log.Fatalln("failed to connect to PostgreSQL server:", err)
-	}
-
-	return conn
+		replication,
+	)
 }
 
 func (client *ReplicationClient) query(sql string, values ...any) pgx.Rows {

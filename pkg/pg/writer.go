@@ -6,16 +6,16 @@ import (
 	"fmt"
 	"text/template"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5"
 )
 
 type Writer struct {
 	currentLsnTable string
 	queryTemplate   *template.Template
-	conn            *pgxpool.Pool
+	conn            *pgx.Conn
 }
 
-func NewWriter(inputConnectionName string, writeQuery string, pool *pgxpool.Pool) *Writer {
+func NewWriter(inputConnectionName string, writeQuery string, conn *pgx.Conn) *Writer {
 	tmpl, err := template.New("outputSql").Parse(writeQuery)
 	if err != nil {
 		panic(err)
@@ -24,7 +24,7 @@ func NewWriter(inputConnectionName string, writeQuery string, pool *pgxpool.Pool
 	return &Writer{
 		currentLsnTable: fmt.Sprintf("trucker_current_lsn__%s", inputConnectionName),
 		queryTemplate:   tmpl,
-		conn:            pool,
+		conn:            conn,
 	}
 }
 

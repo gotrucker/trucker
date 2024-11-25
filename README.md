@@ -84,6 +84,7 @@ https://pkg.go.dev/go.uber.org/zap
 
 # Wishes for the future
 - Integrate DuckDB as a library to allow having lots more input / output sources
+- Large tests with TPC-DS dataset and some gnarly scenarios
 
 # Questions
 

@@ -5,15 +5,15 @@ import (
 	"context"
 	"text/template"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5"
 )
 
 type Reader struct {
 	queryTemplate *template.Template
-	conn          *pgxpool.Pool
+	conn          *pgx.Conn
 }
 
-func NewReader(readQuery string, pool *pgxpool.Pool) *Reader {
+func NewReader(readQuery string, pool *pgx.Conn) *Reader {
 	tmpl, err := template.New("inputSql").Parse(readQuery)
 	if err != nil {
 		panic(err)

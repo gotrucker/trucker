@@ -2,20 +2,22 @@ package pg
 
 import (
 	// "context"
+	"context"
 	"fmt"
 	// "reflect"
 	"strings"
 	"testing"
+
 	// "time"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/tonyfg/trucker/test/helpers"
 )
 
 func TestSetup(t *testing.T) {
 	conn, rc := replicationTestSetup()
-	defer conn.Close()
+	defer conn.Close(context.Background())
 	defer rc.Stop()
 
 	tablesToBackfill, backfillLSN, snapshotName := rc.Setup()
@@ -87,7 +89,7 @@ func TestSetup(t *testing.T) {
 // 	}
 // }
 
-func replicationTestSetup() (*pgxpool.Pool, *ReplicationClient) {
+func replicationTestSetup() (*pgx.Conn, *ReplicationClient) {
 	conn := helpers.PrepareTestDb()
 	replicationClient := NewReplicationClient([]string{"public.countries"}, helpers.ConnectionCfg)
 

@@ -9,7 +9,7 @@ import (
 
 func TestSetupLsnTracking(t *testing.T) {
 	w := writerTestSetup()
-	defer w.conn.Close()
+	defer w.conn.Close(context.Background())
 
 	// It should create the LSN tracking table
 	w.SetupLsnTracking()
@@ -58,7 +58,7 @@ func TestSetupLsnTracking(t *testing.T) {
 
 func TestGetCurrentLsn(t *testing.T) {
 	w := writerTestSetup()
-	defer w.conn.Close()
+	defer w.conn.Close(context.Background())
 	w.SetupLsnTracking()
 
 	lsn := w.GetCurrentLsn()
@@ -81,7 +81,7 @@ func TestGetCurrentLsn(t *testing.T) {
 
 func TestSetCurrentLsn(t *testing.T) {
 	w := writerTestSetup()
-	defer w.conn.Close()
+	defer w.conn.Close(context.Background())
 	w.SetupLsnTracking()
 	w.SetCurrentLsn("xxx")
 
@@ -93,7 +93,7 @@ func TestSetCurrentLsn(t *testing.T) {
 
 func TestWrite(t *testing.T) {
 	w := writerTestSetup()
-	defer w.conn.Close()
+	defer w.conn.Close(context.Background())
 	w.SetupLsnTracking()
 
 	w.Write(

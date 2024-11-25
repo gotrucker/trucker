@@ -1,14 +1,17 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"syscall"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/tonyfg/trucker/pkg/config"
-	"github.com/tonyfg/trucker/pkg/db"
 	"github.com/tonyfg/trucker/pkg/pg"
 	"github.com/tonyfg/trucker/pkg/truck"
 )
@@ -33,7 +36,14 @@ func main() {
 		stopChans[truckCfg.Name] = stopChan
 		truck := truck.NewTruck(truckCfg, dbConnections, stopChan, stoppedChan)
 		trucksByInputConnection[truckCfg.Input.Connection] = append(trucksByInputConnection[truckCfg.Input.Connection], truck)
-		// truck.Start() // We need to handle backfills first
+	}
+
+	for _, trucks := range trucksByInputConnection {
+		for _, truck := range trucks {
+			fmt.Println(truck)
+			// truck.Backfill()
+			// cona cona cona
+		}
 	}
 
 	if len(truckCfgs) > 0 {
@@ -68,8 +78,8 @@ func trapSignals() chan os.Signal {
 	return sigChan
 }
 
-func connectDatabases(connectionCfgs map[string]config.Connection) map[string]db.Db {
-	connections := make(map[string]db.Db)
+func connectDatabases(connectionCfgs map[string]config.Connection) map[string]*pgx.Conn {
+	connections := make(map[string]*pgx.Conn)
 
 	for _, connectionCfg := range connectionCfgs {
 		if connectionCfg.Adapter == "postgres" {
@@ -82,28 +92,19 @@ func connectDatabases(connectionCfgs map[string]config.Connection) map[string]db
 	return connections
 }
 
-func disconnectDatabases(connections map[string]db.Db) {
+func disconnectDatabases(connections map[string]*pgx.Conn) {
 	for _, connection := range connections {
-		connection.Write.Disconnect()
-
-		if connection.Read != connection.Write {
-			connection.Read.Disconnect()
-		}
+		connection.Close(context.Background())
 	}
 }
 
-func pgConnect(connectionCfg config.Connection) db.Db {
-	database := db.Db{}
-
-	database.Write = pg.NewConnectionPool(
+func pgConnect(connectionCfg config.Connection) *pgx.Conn {
+	return pg.NewConnection(
 		connectionCfg.User,
 		connectionCfg.Pass,
 		connectionCfg.Host,
 		connectionCfg.Port,
 		connectionCfg.Database,
+		false,
 	)
-
-	database.Read = database.Write
-
-	return database
 }
