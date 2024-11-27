@@ -33,7 +33,7 @@ func (w *Writer) SetupLsnTracking() {
 		context.Background(),
 		fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
   id bool PRIMARY KEY DEFAULT true,
-  lsn text NOT NULL,
+  lsn bigint NOT NULL,
   CONSTRAINT ensure_single_row CHECK (id)
 )`, w.currentLsnTable),
 	)
@@ -43,18 +43,18 @@ func (w *Writer) SetupLsnTracking() {
 	}
 }
 
-func (w *Writer) GetCurrentLsn() string {
-	var lsn string
+func (w *Writer) GetCurrentLsn() int64 {
+	var lsn int64
 	sql := fmt.Sprintf("SELECT lsn FROM %s", w.currentLsnTable)
 	row := w.conn.QueryRow(context.Background(), sql)
 	row.Scan(&lsn)
 	return lsn
 }
 
-func (w *Writer) SetCurrentLsn(lsn string) {
-	sql := fmt.Sprintf(`INSERT INTO %s (lsn) VALUES ('%s')
-ON CONFLICT (id) DO UPDATE SET lsn = '%s'`, w.currentLsnTable, lsn, lsn)
-	_, err := w.conn.Exec(context.Background(), sql)
+func (w *Writer) SetCurrentLsn(lsn int64) {
+	sql := fmt.Sprintf(`INSERT INTO %s (lsn) VALUES ($1)
+ON CONFLICT (id) DO UPDATE SET lsn = $1`, w.currentLsnTable)
+	_, err := w.conn.Exec(context.Background(), sql, lsn)
 
 	if err != nil {
 		panic(err)
@@ -62,6 +62,10 @@ ON CONFLICT (id) DO UPDATE SET lsn = '%s'`, w.currentLsnTable, lsn, lsn)
 }
 
 func (w *Writer) Write(columns []string, values [][]any) {
+	if len(columns) == 0 || len(values) == 0 {
+		return
+	}
+
 	valuesLiteral, flatValues := makeValuesLiteral(columns, values)
 
 	tmplVars := map[string]string{"rows": valuesLiteral.String()}
@@ -77,6 +81,27 @@ func (w *Writer) Write(columns []string, values [][]any) {
 	}
 }
 
+func (w *Writer) TruncateTable(table string) {
+	_, err := w.conn.Exec(context.Background(), fmt.Sprintf("TRUNCATE TABLE %s", table))
+	if err != nil {
+		panic(err)
+	}
+}
 
-// o Reader e o Writer estão feitos e parecem bastante clean (fora a cena do mapeamento dos tipos que n está clean, mas tem lá um TODO)
-// agora é preciso adaptar o replication.go e backfill.go para usar isto, e eventualmente tentar dar deprecate no connection_poool.go
+func (w *Writer) WithTransaction(f func()) {
+	tx, err := w.conn.Begin(context.Background())
+	if err != nil {
+		panic(err)
+	}
+
+	f()
+
+	err = tx.Commit(context.Background())
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (w *Writer) Close() {
+	w.conn.Close(context.Background())
+}

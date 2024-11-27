@@ -3,3 +3,4 @@ input:
   table: public.whiskies
 output:
   connection: pgconn
+  table: public.whiskies_flat

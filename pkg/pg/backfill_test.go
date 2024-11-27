@@ -10,7 +10,7 @@ import (
 func TestStreamBackfillData(t *testing.T) {
 	conn, rc := replicationTestSetup()
 	defer conn.Close(context.Background())
-	defer rc.Stop()
+	defer rc.Close()
 
 	_, _, snapshotName := rc.Setup()
 

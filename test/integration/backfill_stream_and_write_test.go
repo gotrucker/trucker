@@ -5,11 +5,13 @@ import (
 	"reflect"
 	"testing"
 	"time"
+	"fmt"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pglogrepl"
 
-	"github.com/tonyfg/trucker/test/helpers"
 	"github.com/tonyfg/trucker/pkg/pg"
+	"github.com/tonyfg/trucker/test/helpers"
 )
 
 func TestStreamBackfillReadAndWrite(t *testing.T) {
@@ -54,7 +56,7 @@ FROM {{ .rows }}`,
 		}
 
 		cols, rows := r.Read("insert", backfillBatch.Columns, backfillBatch.Rows)
-		w.Write(cols, rows)
+		w.WithTransaction(func() { w.Write(cols, rows) })
 	}
 
 	expectedColumns := []string{"name", "age", "type", "country"}
@@ -74,8 +76,9 @@ FROM {{ .rows }}`,
 		t.Errorf("Expected %T %v, got %T %v", expectedRows, expectedRows, rows, rows)
 	}
 
+	fmt.Println("Snapshot LSN", pglogrepl.LSN(snapshotLsn))
 	// Now let's stream Jack Daniels
-	streamChan := rc.Start(snapshotLsn)
+	streamChan := rc.Start(snapshotLsn, 0)
 
 	select {
 	case changesets := <-streamChan:
@@ -89,12 +92,12 @@ FROM {{ .rows }}`,
 		}
 
 		columns, values := r.Read("insert", changeset.InsertColumns, changeset.InsertValues)
-		w.Write(columns, values)
-	case <-time.After(1 * time.Second):
+		w.WithTransaction(func() { w.Write(columns, values) })
+	case <-time.After(5 * time.Second):
 		t.Error("Reading from channel took too long...")
 	}
 
-	rc.Stop()
+	rc.Close()
 	changesets := <-streamChan
 	changeset := changesets["public.whiskies"]
 	if changeset != nil {

@@ -21,7 +21,7 @@ func TestLoadConfig(t *testing.T) {
 		t.Error("Expected connection adapter = postgres, got", conn.Adapter)
 	}
 
-	if conn.Host != "postgres" {
+	if conn.Host != "pg_input" {
 		t.Error("Expected connection host = localhost, got", conn.Host)
 	}
 

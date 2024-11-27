@@ -9,7 +9,7 @@ import (
 
 func TestSetupLsnTracking(t *testing.T) {
 	w := writerTestSetup()
-	defer w.conn.Close(context.Background())
+	defer w.Close()
 
 	// It should create the LSN tracking table
 	w.SetupLsnTracking()
@@ -32,7 +32,7 @@ func TestSetupLsnTracking(t *testing.T) {
 	// - We can write LSNs to the table
 	_, err = w.conn.Exec(
 		context.Background(),
-		"INSERT INTO trucker_current_lsn__test (lsn) VALUES ('123')")
+		"INSERT INTO trucker_current_lsn__test (lsn) VALUES (123)")
 	if err != nil {
 		t.Error(err)
 	}
@@ -40,7 +40,7 @@ func TestSetupLsnTracking(t *testing.T) {
 	// - We can't add more than 1 row to the table
 	_, err = w.conn.Exec(
 		context.Background(),
-		"INSERT INTO trucker_current_lsn__test (lsn) VALUES ('234')")
+		"INSERT INTO trucker_current_lsn__test (lsn) VALUES (234)")
 	if err == nil {
 		t.Error("Expected an error when adding more than 1 row to the LSN tracking table")
 	}
@@ -51,49 +51,49 @@ func TestSetupLsnTracking(t *testing.T) {
 	var count int64
 	row.Scan(&count)
 
-	if count > 1 {
-		t.Error("Adding more than 1 row to the LSN tracking table should not be possible")
+	if count != 1 {
+		t.Error("There should be exactly 1 row in the LSN tracking table")
 	}
 }
 
 func TestGetCurrentLsn(t *testing.T) {
 	w := writerTestSetup()
-	defer w.conn.Close(context.Background())
+	defer w.Close()
 	w.SetupLsnTracking()
 
 	lsn := w.GetCurrentLsn()
-	if lsn != "" {
-		t.Errorf("Expected empty string, got %s", lsn)
+	if lsn != 0 {
+		t.Errorf("Expected empty LSN, got %d", lsn)
 	}
 
 	_, err := w.conn.Exec(
 		context.Background(),
-		"INSERT INTO trucker_current_lsn__test (lsn) VALUES ('123')")
+		"INSERT INTO trucker_current_lsn__test (lsn) VALUES (123)")
 	if err != nil {
 		t.Error(err)
 	}
 
 	lsn = w.GetCurrentLsn()
-	if lsn != "123" {
-		t.Errorf("LSN should be '123', got %s", lsn)
+	if lsn != 123 {
+		t.Errorf("LSN should be 123, got %d", lsn)
 	}
 }
 
 func TestSetCurrentLsn(t *testing.T) {
 	w := writerTestSetup()
-	defer w.conn.Close(context.Background())
+	defer w.Close()
 	w.SetupLsnTracking()
-	w.SetCurrentLsn("xxx")
+	w.SetCurrentLsn(8234)
 
 	lsn := w.GetCurrentLsn()
-	if lsn != "xxx" {
-		t.Errorf("LSN should be 'xxx', got %s", lsn)
+	if lsn != 8234 {
+		t.Errorf("LSN should be 8234, got %d", lsn)
 	}
 }
 
 func TestWrite(t *testing.T) {
 	w := writerTestSetup()
-	defer w.conn.Close(context.Background())
+	defer w.Close()
 	w.SetupLsnTracking()
 
 	w.Write(

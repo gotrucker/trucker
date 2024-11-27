@@ -16,6 +16,7 @@ type Truck struct {
 	} `yaml:"input"`
 	Output struct {
 		Connection string `yaml:"connection,omitempty"`
+		Table      string `yaml:"table,omitempty"`
 		Sql        string
 	} `yaml:"output"`
 }
@@ -63,10 +64,11 @@ func loadTruck(path string, cfg Config) Truck {
 	}
 
 	log.Printf(
-		"Configured truck: %s:%s -> %s\nInput SQL:\n%s\nOutput SQL:\n%s\n\n",
+		"Configured truck: %s:%s -> %s:%s\nInput SQL:\n%s\nOutput SQL:\n%s\n\n",
 		truck.Input.Connection,
 		truck.Input.Table,
 		truck.Output.Connection,
+		truck.Output.Table,
 		truck.Input.Sql,
 		truck.Output.Sql,
 	)

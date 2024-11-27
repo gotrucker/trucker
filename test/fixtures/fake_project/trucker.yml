@@ -1,7 +1,7 @@
 connections:
 - name: pgconn
   adapter: postgres
-  host: {{ or .PG_HOST "postgres" }}
+  host: {{ or .PG_HOST "pg_input" }}
   database: trucker
   user: trucker
   pass: pgpass

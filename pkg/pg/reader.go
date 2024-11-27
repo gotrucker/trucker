@@ -26,6 +26,10 @@ func NewReader(readQuery string, pool *pgx.Conn) *Reader {
 // - feed that to the template as a .rows variable
 // - run the query with values args and return the result
 func (r *Reader) Read(operation string, columns []string, rowValues [][]any) ([]string, [][]any) {
+	if len(columns) == 0 || len(rowValues) == 0 {
+		return nil, nil
+	}
+
 	valuesLiteral, values := makeValuesLiteral(columns, rowValues)
 	tmplVars := map[string]string{
 		"operation": operation,
@@ -59,4 +63,8 @@ func (r *Reader) Read(operation string, columns []string, rowValues [][]any) ([]
 	}
 
 	return cols, vals
+}
+
+func (r *Reader) Close() {
+	r.conn.Close(context.Background())
 }

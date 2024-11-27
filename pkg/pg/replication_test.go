@@ -3,7 +3,6 @@ package pg
 import (
 	// "context"
 	"context"
-	"fmt"
 	// "reflect"
 	"strings"
 	"testing"
@@ -18,7 +17,7 @@ import (
 func TestSetup(t *testing.T) {
 	conn, rc := replicationTestSetup()
 	defer conn.Close(context.Background())
-	defer rc.Stop()
+	defer rc.Close()
 
 	tablesToBackfill, backfillLSN, snapshotName := rc.Setup()
 	if len(tablesToBackfill) != 1 {
@@ -27,7 +26,7 @@ func TestSetup(t *testing.T) {
 	if tablesToBackfill[0] != "public.countries" {
 		t.Error("Expected to backfill 'public.countries', but got", tablesToBackfill[0])
 	}
-	if !strings.Contains(fmt.Sprintf("%v", backfillLSN), "/") {
+	if backfillLSN <= 0 {
 		t.Error("Expected backfillLSN to be a valid LSN, but got", backfillLSN)
 	}
 	if !strings.Contains(snapshotName, "-") {
@@ -37,7 +36,7 @@ func TestSetup(t *testing.T) {
 
 // func TestStart(t *testing.T) {
 // 	conn, rc := replicationTestSetup()
-// 	defer rc.Stop()
+// 	defer rc.Close()
 // 	defer conn.Close()
 
 // 	_, backfillLSN, _ := rc.Setup()
