@@ -25,7 +25,7 @@ func TestDoTheThing(t *testing.T) {
 		t.Error(err)
 	}
 
-	doTheThing(Basepath + "/test/fixtures/fake_project")
+	go doTheThing(Basepath + "/test/fixtures/fake_project")
 
 	var cnt int64
 	row := chConn.QueryRow(context.Background(), "SELECT count(*) FROM whisky_types_flat")
