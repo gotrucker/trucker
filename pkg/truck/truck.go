@@ -59,6 +59,7 @@ func (t *Truck) Backfill(snapshotName string, targetLSN int64) {
 		}
 
 		cols, rows := t.Reader.Read("insert", backfillBatch.Columns, backfillBatch.Rows)
+		log.Printf("Backfilling %d rows...\n", len(rows))
 		t.Writer.Write(cols, rows)
 	}
 }

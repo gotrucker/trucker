@@ -3,6 +3,7 @@ package postgres
 import (
 	"bytes"
 	"context"
+	// "log"
 	"text/template"
 
 	"github.com/jackc/pgx/v5"
@@ -42,6 +43,8 @@ func (r *Reader) Read(operation string, columns []string, rowValues [][]any) ([]
 	sql := new(bytes.Buffer)
 	err := r.queryTemplate.Execute(sql, tmplVars)
 
+	// log.Printf("[Postgres Reader] Running query:\n%s\n", sql.String())
+	// log.Printf("[Postgres Reader] Query values:\n%v\n", values)
 	rows, err := r.conn.Query(
 		context.Background(),
 		sql.String(),

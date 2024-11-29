@@ -109,6 +109,10 @@ func connectionYmlToConnection(connYml connectionYml, basePath string) Connectio
 }
 
 func readFile(basePath string, path string) string {
+	if strings.HasPrefix(path, "/") {
+		basePath = ""
+	}
+
 	data, err := os.ReadFile(filepath.Join(basePath, path))
 	if err != nil {
 		log.Fatal(err)

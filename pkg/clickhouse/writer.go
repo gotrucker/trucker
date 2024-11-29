@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	// "log"
 	"text/template"
 
     "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
@@ -74,6 +75,8 @@ func (w *Writer) Write(columns []string, values [][]any) {
 		panic(err)
 	}
 
+	// log.Printf("[Clickhouse Writer] Executing SQL:\n%s", sql.String())
+	// log.Printf("[Clickhouse Writer] Values:\n%v", flatValues)
 	err = w.conn.Exec(context.Background(), sql.String(), flatValues...)
 	if err != nil {
 		panic(err)

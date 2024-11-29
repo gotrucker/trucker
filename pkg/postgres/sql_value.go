@@ -33,12 +33,6 @@ type WalChange struct {
 	} `json:"oldkeys"`
 }
 
-const (
-	Insert uint8 = iota
-	Update
-	Delete
-)
-
 type Changeset struct {
 	Table         string
 	InsertColumns []string
@@ -48,6 +42,14 @@ type Changeset struct {
 	DeleteColumns []string
 	DeleteValues  [][]any
 }
+
+const (
+	Insert uint8 = iota
+	Update
+	Delete
+)
+
+const maxPreparedStatementArgs = 32767
 
 func makeChangesets(wal2jsonChanges []byte) map[string]*Changeset {
 	data := WalData{}

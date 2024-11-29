@@ -19,6 +19,17 @@ CREATE TABLE public.whiskies (
   whisky_type_id int NOT NULL REFERENCES whisky_types(id)
 );
 
+CREATE TABLE public.weird_types (
+  a_number bigint,
+  a_bool boolean,
+  a_date date,
+  an_ip_addr inet,
+  a_jsonb jsonb,
+  a_text_arr text[],
+  a_ts timestamp,
+  an_uuid uuid
+);
+
 CREATE TABLE public.whiskies_flat (
   id int PRIMARY KEY,
   name text NOT NULL,
@@ -39,3 +50,7 @@ VALUES ('Bourbon', 5), ('Japanese', 4), ('Triple Distilled', 3), ('Single Malt',
 
 INSERT INTO public.whiskies (name, age, whisky_type_id)
 VALUES ('Glenfiddich', 15, 4), ('Lagavulin', 12, 3), ('Hibiki', 17, 2), ('Laphroaig', 10, 5);
+
+INSERT INTO public.weird_types (a_number, a_bool, a_date, an_ip_addr, a_jsonb, a_text_arr, a_ts, an_uuid)
+VALUES (1234567890, true, '2020-01-01', '192.168.0.1', '{"key": "value"}', ARRAY['a', 'b', 'c'], '2020-01-01T00:00:00Z', '123e4567-e89b-12d3-a456-426614174000'),
+       (null, null, null, null, null, null, null, null);

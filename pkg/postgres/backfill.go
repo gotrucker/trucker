@@ -44,6 +44,11 @@ func (client *ReplicationClient) StreamBackfillData(table string, snapshotName s
 			columns[i] = field.Name
 		}
 
+		cappedBatchSize := maxPreparedStatementArgs / (len(columns) + 1)
+		if cappedBatchSize > backfillBatchSize {
+			cappedBatchSize = backfillBatchSize
+		}
+
 		rowValues := make([][]any, 0, 1)
 
 		for i := 0; rows.Next(); i++ {
@@ -54,13 +59,14 @@ func (client *ReplicationClient) StreamBackfillData(table string, snapshotName s
 
 			rowValues = append(rowValues, values)
 
-			if i >= backfillBatchSize {
+			if i >= cappedBatchSize {
 				changesChan <- &BackfillBatch{Columns: columns, Rows: rowValues}
 				rowValues = make([][]any, 0, len(rowValues))
 				i = 0
 			}
 		}
 
+		log.Printf("Read a batch of %d raw rows for backfill...\n", len(rowValues))
 		changesChan <- &BackfillBatch{Columns: columns, Rows: rowValues}
 	}()
 
