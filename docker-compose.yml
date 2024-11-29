@@ -83,7 +83,7 @@ services:
     image: clickhouse/clickhouse-server:head
     volumes:
     - clickhouse-data:/var/lib/clickhouse
-    - /tmp:/var/log/clickhouse-server
+    - /tmp/clickhouse-logs:/var/log/clickhouse-server
     - ${PWD}/docker-compose/clickhouse/config.xml:/etc/clickhouse-server/config.d/config.xml
     - ${PWD}/docker-compose/clickhouse/users.xml:/etc/clickhouse-server/users.d/users.xml
     environment:

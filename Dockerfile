@@ -17,5 +17,5 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -ldflags="-s -w
 
 FROM scratch
 COPY --from=build /src/trucker /trucker
-WORKDIR /
+WORKDIR /project
 ENTRYPOINT ["/trucker"]

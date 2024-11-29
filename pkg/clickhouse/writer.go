@@ -54,7 +54,7 @@ func (w *Writer) GetCurrentPosition() int64 {
 
 	var lsn int64
 	if err := row.Scan(&lsn); err != nil {
-		panic(err)
+		return 0
 	}
 
 	return lsn

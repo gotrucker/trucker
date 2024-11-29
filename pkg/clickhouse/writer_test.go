@@ -46,9 +46,15 @@ func TestSetupPositionTracking(t *testing.T) {
 func TestSetAndGetCurrentPosition(t *testing.T) {
 	w := writerTestSetup()
 	defer w.Close()
-	w.SetupPositionTracking()
 
 	lsn := w.GetCurrentPosition()
+	if lsn != 0 {
+		t.Errorf("Expected empty LSN, got %d", lsn)
+	}
+
+	w.SetupPositionTracking()
+
+	lsn = w.GetCurrentPosition()
 	if lsn != 0 {
 		t.Errorf("Expected empty LSN, got %d", lsn)
 	}
