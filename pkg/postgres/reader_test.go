@@ -1,6 +1,7 @@
-package pg
+package postgres
 
 import (
+	"context"
 	"reflect"
 	"testing"
 
@@ -34,11 +35,11 @@ func TestRead(t *testing.T) {
 }
 
 func readerTestSetup() *Reader {
-	conn := helpers.PrepareTestDb()
+	helpers.PreparePostgresTestDb().Close(context.Background())
 	return NewReader(
 		`SELECT '{{ .operation }}' op, r.id, r.name, r.age, t.name type
 FROM {{ .rows }}
 JOIN whisky_types t ON t.id = r.whisky_type_id`,
-		 conn,
+		helpers.PostgresCfg,
 	)
 }

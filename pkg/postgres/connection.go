@@ -1,4 +1,4 @@
-package pg
+package postgres
 
 import (
 	"context"
@@ -24,11 +24,11 @@ func NewConnection(user string, pass string, host string, port uint16, database 
 
 	connString := fmt.Sprintf(
 		"postgres://%s:%s@%s:%d/%s%s",
-		user,
+		url.QueryEscape(user),
 		url.QueryEscape(pass),
-		host,
+		url.QueryEscape(host),
 		port,
-		database,
+		url.QueryEscape(database),
 		replicationParam)
 
 	config, err := pgx.ParseConfig(connString)

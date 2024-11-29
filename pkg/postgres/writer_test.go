@@ -1,4 +1,4 @@
-package pg
+package postgres
 
 import (
 	"context"
@@ -7,12 +7,12 @@ import (
 	"github.com/tonyfg/trucker/test/helpers"
 )
 
-func TestSetupLsnTracking(t *testing.T) {
+func TestSetupPositionTracking(t *testing.T) {
 	w := writerTestSetup()
 	defer w.Close()
 
 	// It should create the LSN tracking table
-	w.SetupLsnTracking()
+	w.SetupPositionTracking()
 	_, err := w.conn.Exec(
 		context.Background(),
 		"SELECT * FROM trucker_current_lsn__test")
@@ -21,7 +21,7 @@ func TestSetupLsnTracking(t *testing.T) {
 	}
 
 	// If the table already exists that should be ok too...
-	w.SetupLsnTracking()
+	w.SetupPositionTracking()
 	_, err = w.conn.Exec(
 		context.Background(),
 		"SELECT * FROM trucker_current_lsn__test")
@@ -56,12 +56,12 @@ func TestSetupLsnTracking(t *testing.T) {
 	}
 }
 
-func TestGetCurrentLsn(t *testing.T) {
+func TestGetCurrentPosition(t *testing.T) {
 	w := writerTestSetup()
 	defer w.Close()
-	w.SetupLsnTracking()
+	w.SetupPositionTracking()
 
-	lsn := w.GetCurrentLsn()
+	lsn := w.GetCurrentPosition()
 	if lsn != 0 {
 		t.Errorf("Expected empty LSN, got %d", lsn)
 	}
@@ -73,19 +73,19 @@ func TestGetCurrentLsn(t *testing.T) {
 		t.Error(err)
 	}
 
-	lsn = w.GetCurrentLsn()
+	lsn = w.GetCurrentPosition()
 	if lsn != 123 {
 		t.Errorf("LSN should be 123, got %d", lsn)
 	}
 }
 
-func TestSetCurrentLsn(t *testing.T) {
+func TestSetCurrentPosition(t *testing.T) {
 	w := writerTestSetup()
 	defer w.Close()
-	w.SetupLsnTracking()
-	w.SetCurrentLsn(8234)
+	w.SetupPositionTracking()
+	w.SetCurrentPosition(8234)
 
-	lsn := w.GetCurrentLsn()
+	lsn := w.GetCurrentPosition()
 	if lsn != 8234 {
 		t.Errorf("LSN should be 8234, got %d", lsn)
 	}
@@ -94,7 +94,7 @@ func TestSetCurrentLsn(t *testing.T) {
 func TestWrite(t *testing.T) {
 	w := writerTestSetup()
 	defer w.Close()
-	w.SetupLsnTracking()
+	w.SetupPositionTracking()
 
 	w.Write(
 		[]string{"name", "age", "whisky_type_id"},
@@ -121,10 +121,11 @@ func TestWrite(t *testing.T) {
 }
 
 func writerTestSetup() *Writer {
-	conn := helpers.PrepareTestDb()
+	helpers.PreparePostgresTestDb().Close(context.Background())
 
 	return NewWriter(
 		"test",
 		"INSERT INTO whiskies (name, age, whisky_type_id) SELECT name, age, whisky_type_id FROM {{.rows}}",
-		conn)
+		helpers.PostgresCfg,
+	)
 }

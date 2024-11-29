@@ -1,4 +1,4 @@
-package pg
+package postgres
 
 import (
 	"bytes"
@@ -6,6 +6,8 @@ import (
 	"text/template"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/tonyfg/trucker/pkg/config"
 )
 
 type Reader struct {
@@ -13,13 +15,15 @@ type Reader struct {
 	conn          *pgx.Conn
 }
 
-func NewReader(readQuery string, pool *pgx.Conn) *Reader {
+func NewReader(readQuery string, cfg config.Connection) *Reader {
 	tmpl, err := template.New("inputSql").Parse(readQuery)
 	if err != nil {
 		panic(err)
 	}
 
-	return &Reader{queryTemplate: tmpl, conn: pool}
+	conn := NewConnection(cfg.User, cfg.Pass, cfg.Host, cfg.Port, cfg.Database, false)
+
+	return &Reader{queryTemplate: tmpl, conn: conn}
 }
 
 // - transform the input args into a postgres values literal

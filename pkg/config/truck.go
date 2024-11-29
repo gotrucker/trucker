@@ -8,7 +8,7 @@ import (
 )
 
 type Truck struct {
-	Name string
+	Name  string
 	Input struct {
 		Connection string `yaml:"connection,omitempty"`
 		Table      string `yaml:"table,omitempty"`

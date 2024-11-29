@@ -1,4 +1,4 @@
-package pg
+package postgres
 
 import (
 	"bytes"
@@ -7,6 +7,8 @@ import (
 	"text/template"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/tonyfg/trucker/pkg/config"
 )
 
 type Writer struct {
@@ -15,11 +17,13 @@ type Writer struct {
 	conn            *pgx.Conn
 }
 
-func NewWriter(inputConnectionName string, writeQuery string, conn *pgx.Conn) *Writer {
+func NewWriter(inputConnectionName string, writeQuery string, cfg config.Connection) *Writer {
 	tmpl, err := template.New("outputSql").Parse(writeQuery)
 	if err != nil {
 		panic(err)
 	}
+
+	conn := NewConnection(cfg.User, cfg.Pass, cfg.Host, cfg.Port, cfg.Database, false)
 
 	return &Writer{
 		currentLsnTable: fmt.Sprintf("trucker_current_lsn__%s", inputConnectionName),
@@ -28,7 +32,7 @@ func NewWriter(inputConnectionName string, writeQuery string, conn *pgx.Conn) *W
 	}
 }
 
-func (w *Writer) SetupLsnTracking() {
+func (w *Writer) SetupPositionTracking() {
 	_, err := w.conn.Exec(
 		context.Background(),
 		fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
@@ -43,15 +47,7 @@ func (w *Writer) SetupLsnTracking() {
 	}
 }
 
-func (w *Writer) GetCurrentLsn() int64 {
-	var lsn int64
-	sql := fmt.Sprintf("SELECT lsn FROM %s", w.currentLsnTable)
-	row := w.conn.QueryRow(context.Background(), sql)
-	row.Scan(&lsn)
-	return lsn
-}
-
-func (w *Writer) SetCurrentLsn(lsn int64) {
+func (w *Writer) SetCurrentPosition(lsn int64) {
 	sql := fmt.Sprintf(`INSERT INTO %s (lsn) VALUES ($1)
 ON CONFLICT (id) DO UPDATE SET lsn = $1`, w.currentLsnTable)
 	_, err := w.conn.Exec(context.Background(), sql, lsn)
@@ -59,6 +55,14 @@ ON CONFLICT (id) DO UPDATE SET lsn = $1`, w.currentLsnTable)
 	if err != nil {
 		panic(err)
 	}
+}
+
+func (w *Writer) GetCurrentPosition() int64 {
+	var lsn int64
+	sql := fmt.Sprintf("SELECT lsn FROM %s", w.currentLsnTable)
+	row := w.conn.QueryRow(context.Background(), sql)
+	row.Scan(&lsn)
+	return lsn
 }
 
 func (w *Writer) Write(columns []string, values [][]any) {

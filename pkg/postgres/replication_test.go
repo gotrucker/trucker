@@ -1,4 +1,4 @@
-package pg
+package postgres
 
 import (
 	// "context"
@@ -89,8 +89,8 @@ func TestSetup(t *testing.T) {
 // }
 
 func replicationTestSetup() (*pgx.Conn, *ReplicationClient) {
-	conn := helpers.PrepareTestDb()
-	replicationClient := NewReplicationClient([]string{"public.countries"}, helpers.ConnectionCfg)
+	conn := helpers.PreparePostgresTestDb()
+	replicationClient := NewReplicationClient([]string{"public.countries"}, helpers.PostgresCfg)
 
 	return conn, replicationClient
 }

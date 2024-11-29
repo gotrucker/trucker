@@ -2,6 +2,7 @@ volumes:
   pg_input-data:
   pg_input_replica-data:
   pg_output-data:
+  clickhouse-data:
 
 services:
   go:
@@ -76,3 +77,18 @@ services:
     - -cwal_level=minimal
     - -cmax_wal_senders=0
     - -clog_statement=all
+
+  # HTTP UI accessible at http://localhost/play
+  clickhouse:
+    image: clickhouse/clickhouse-server:head
+    volumes:
+    - clickhouse-data:/var/lib/clickhouse
+    - /tmp:/var/log/clickhouse-server
+    - ${PWD}/docker-compose/clickhouse/config.xml:/etc/clickhouse-server/config.d/config.xml
+    - ${PWD}/docker-compose/clickhouse/users.xml:/etc/clickhouse-server/users.d/users.xml
+    environment:
+      CLICKHOUSE_DB: trucker
+      CLICKHOUSE_USER: trucker
+      CLICKHOUSE_PASSWORD: trucker
+    ports:
+    - 80:8123

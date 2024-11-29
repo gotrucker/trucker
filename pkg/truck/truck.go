@@ -4,10 +4,9 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/jackc/pgx/v5"
-
 	"github.com/tonyfg/trucker/pkg/config"
-	"github.com/tonyfg/trucker/pkg/pg"
+	"github.com/tonyfg/trucker/pkg/db"
+	"github.com/tonyfg/trucker/pkg/postgres"
 )
 
 type ExitMsg struct {
@@ -17,26 +16,26 @@ type ExitMsg struct {
 
 type Truck struct {
 	Name              string
-	ReplicationClient *pg.ReplicationClient
-	Reader            *pg.Reader
+	ReplicationClient *postgres.ReplicationClient
+	Reader            db.Reader
 	InputTable        string
-	Writer            *pg.Writer
+	Writer            db.Writer
 	OutputTable       string
 	OutputSql         string
-	ChangesChan chan *pg.Changeset
+	ChangesChan       chan *postgres.Changeset
 	KillChan          chan any
 	DoneChan          chan ExitMsg
 }
 
-func NewTruck(cfg config.Truck, rc *pg.ReplicationClient, dbConnections map[string]*pgx.Conn, doneChan chan ExitMsg) Truck {
+func NewTruck(cfg config.Truck, rc *postgres.ReplicationClient, connCfgs map[string]config.Connection, doneChan chan ExitMsg) Truck {
 	return Truck{
 		Name:              cfg.Name,
 		ReplicationClient: rc,
-		Reader:            pg.NewReader(cfg.Input.Sql, dbConnections[cfg.Input.Connection]),
+		Reader:            db.NewReader(cfg.Input.Sql, connCfgs[cfg.Input.Connection]),
 		InputTable:        cfg.Input.Table,
-		Writer:            pg.NewWriter(cfg.Input.Connection, cfg.Output.Sql, dbConnections[cfg.Output.Connection]),
+		Writer:            db.NewWriter(cfg.Input.Connection, cfg.Output.Sql, connCfgs[cfg.Output.Connection]),
 		OutputTable:       cfg.Output.Table,
-		ChangesChan: make(chan *pg.Changeset),
+		ChangesChan:       make(chan *postgres.Changeset),
 		KillChan:          make(chan any),
 		DoneChan:          doneChan,
 	}
@@ -50,9 +49,9 @@ func (t *Truck) Backfill(snapshotName string, targetLSN int64) {
 	for {
 		backfillBatch := <-backfillChan
 		if backfillBatch == nil || len(backfillBatch.Rows) == 0 {
-			if t.Writer.GetCurrentLsn() == 0 {
-				t.Writer.SetupLsnTracking()
-				t.Writer.SetCurrentLsn(targetLSN)
+			if t.Writer.GetCurrentPosition() == 0 {
+				t.Writer.SetupPositionTracking()
+				t.Writer.SetCurrentPosition(targetLSN)
 			}
 
 			log.Printf("[Truck %s] Backfill complete!\n", t.Name)
@@ -101,7 +100,7 @@ func (t *Truck) Start() {
 	}()
 }
 
-func (t *Truck) ProcessChangeset(changeset *pg.Changeset) {
+func (t *Truck) ProcessChangeset(changeset *postgres.Changeset) {
 	t.ChangesChan <- changeset
 }
 

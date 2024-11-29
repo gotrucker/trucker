@@ -11,13 +11,14 @@ import (
 )
 
 var (
-	_, b, _, _    = runtime.Caller(0)
-	Basepath      = filepath.Dir(b)
+	_, b, _, _ = runtime.Caller(0)
+	Basepath   = filepath.Dir(b)
 )
 
 func TestDoTheThing(t *testing.T) {
-	conn := helpers.PrepareTestDb()
-	defer conn.Close(context.Background())
+	helpers.PreparePostgresTestDb().Close(context.Background())
+	chConn := helpers.PrepareClickhouseTestDb()
+	defer chConn.Close()
 
 	err := os.Chdir("test/fixtures/fake_project")
 	if err != nil {
@@ -27,7 +28,7 @@ func TestDoTheThing(t *testing.T) {
 	doTheThing(Basepath + "/test/fixtures/fake_project")
 
 	var cnt int64
-	row := conn.QueryRow(context.Background(), "SELECT count(*) FROM whisky_types_flat")
+	row := chConn.QueryRow(context.Background(), "SELECT count(*) FROM whisky_types_flat")
 	row.Scan(&cnt)
 	if cnt == 0 {
 		t.Error("Expected some rows in whisky_types_flat but found none")

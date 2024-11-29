@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"os"
@@ -10,11 +9,10 @@ import (
 	"slices"
 	"syscall"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pglogrepl"
 
 	"github.com/tonyfg/trucker/pkg/config"
-	"github.com/tonyfg/trucker/pkg/pg"
+	"github.com/tonyfg/trucker/pkg/postgres"
 	"github.com/tonyfg/trucker/pkg/truck"
 )
 
@@ -65,9 +63,6 @@ func doTheThing(projectPath string) (chan truck.ExitMsg, []config.Truck, map[str
 	truckCfgs := config.LoadTrucks(projectPath, cfg)
 	doneChan := make(chan truck.ExitMsg, len(truckCfgs))
 
-	dbConnections := connectDatabases(cfg.Connections)
-	defer disconnectDatabases(dbConnections)
-
 	replicatedTablesPerConnection := make(map[string][]string)
 	for _, truckCfg := range truckCfgs {
 		connName := truckCfg.Input.Connection
@@ -78,18 +73,18 @@ func doTheThing(projectPath string) (chan truck.ExitMsg, []config.Truck, map[str
 			append(replicatedTablesPerConnection[connName], truckCfg.Input.Table)
 	}
 
-	replicationClients := make(map[string]*pg.ReplicationClient)
+	replicationClients := make(map[string]*postgres.ReplicationClient)
 	for _, truckCfg := range truckCfgs {
 		connName := truckCfg.Input.Connection
 		if _, ok := replicationClients[connName]; !ok {
 			replicatedTables := replicatedTablesPerConnection[connName]
-			replicationClients[connName] = pg.NewReplicationClient(replicatedTables, cfg.Connections[connName])
+			replicationClients[connName] = postgres.NewReplicationClient(replicatedTables, cfg.Connections[connName])
 		}
 	}
 
 	trucksByInputConnection := make(map[string][]*truck.Truck)
 	for _, truckCfg := range truckCfgs {
-		truck := truck.NewTruck(truckCfg, replicationClients[truckCfg.Input.Connection], dbConnections, doneChan)
+		truck := truck.NewTruck(truckCfg, replicationClients[truckCfg.Input.Connection], cfg.Connections, doneChan)
 		trucksByInputConnection[truckCfg.Input.Connection] = append(trucksByInputConnection[truckCfg.Input.Connection], &truck)
 	}
 
@@ -100,7 +95,7 @@ func doTheThing(projectPath string) (chan truck.ExitMsg, []config.Truck, map[str
 	return doneChan, truckCfgs, trucksByInputConnection
 }
 
-func backfill(replicationClients map[string]*pg.ReplicationClient, trucks map[string][]*truck.Truck) (map[string][]string, map[string]int64) {
+func backfill(replicationClients map[string]*postgres.ReplicationClient, trucks map[string][]*truck.Truck) (map[string][]string, map[string]int64) {
 	backfillLSNs := make(map[string]int64)
 	backfilledTables := make(map[string][]string)
 
@@ -123,7 +118,7 @@ func backfill(replicationClients map[string]*pg.ReplicationClient, trucks map[st
 	return backfilledTables, backfillLSNs
 }
 
-func catchup(replicationClients map[string]*pg.ReplicationClient, trucks map[string][]*truck.Truck, skipTables map[string][]string, backfillLSNs map[string]int64) {
+func catchup(replicationClients map[string]*postgres.ReplicationClient, trucks map[string][]*truck.Truck, skipTables map[string][]string, backfillLSNs map[string]int64) {
 	for connName, rc := range replicationClients {
 		var startLSN int64
 		endLSN := backfillLSNs[connName]
@@ -132,14 +127,9 @@ func catchup(replicationClients map[string]*pg.ReplicationClient, trucks map[str
 			if slices.Contains(skipTables[connName], truck.InputTable) {
 				fmt.Printf("Skipping catchup for truck '%s' because we just finished backfilling it...\n", truck.Name)
 				continue
-			} else {
-				fmt.Printf("FUUUUUUUUUUU catchup for truck '%s'...\n", truck.Name)
 			}
 
-			fmt.Println("Fodasse o uqe eustou a fazer aqui")
-
-			truckLSN := truck.Writer.GetCurrentLsn()
-
+			truckLSN := truck.Writer.GetCurrentPosition()
 			if truckLSN < startLSN || startLSN == 0 {
 				startLSN = truckLSN
 			}
@@ -153,7 +143,7 @@ func catchup(replicationClients map[string]*pg.ReplicationClient, trucks map[str
 				changesets := <-changesChan
 				if changesets == nil {
 					for _, truck := range trucks[connName] {
-						truck.Writer.SetCurrentLsn(endLSN)
+						truck.Writer.SetCurrentPosition(endLSN)
 					}
 
 					break
@@ -172,8 +162,7 @@ func catchup(replicationClients map[string]*pg.ReplicationClient, trucks map[str
 }
 
 func streamIt(trucksByInputConnection map[string][]*truck.Truck) {
-	fmt.Println("STREAAAAAAAAAAM ITTTTTTTTTTTTTT")
-	trucksByRc := make(map[*pg.ReplicationClient][]*truck.Truck)
+	trucksByRc := make(map[*postgres.ReplicationClient][]*truck.Truck)
 	for _, trucks := range trucksByInputConnection {
 		for _, t := range trucks {
 			if _, ok := trucksByRc[t.ReplicationClient]; !ok {
@@ -188,7 +177,7 @@ func streamIt(trucksByInputConnection map[string][]*truck.Truck) {
 		var startLSN int64
 
 		for _, t := range trucks {
-			truckLSN := t.Writer.GetCurrentLsn()
+			truckLSN := t.Writer.GetCurrentPosition()
 
 			if truckLSN < startLSN || startLSN == 0 {
 				startLSN = truckLSN
@@ -216,37 +205,6 @@ func trapSignals() chan os.Signal {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
 	return sigChan
-}
-
-func connectDatabases(connectionCfgs map[string]config.Connection) map[string]*pgx.Conn {
-	connections := make(map[string]*pgx.Conn)
-
-	for _, connectionCfg := range connectionCfgs {
-		if connectionCfg.Adapter == "postgres" {
-			connections[connectionCfg.Name] = pgConnect(connectionCfg)
-		} else {
-			log.Fatalf("Unsupported connection adapter: %s", connectionCfg.Adapter)
-		}
-	}
-
-	return connections
-}
-
-func disconnectDatabases(connections map[string]*pgx.Conn) {
-	for _, connection := range connections {
-		connection.Close(context.Background())
-	}
-}
-
-func pgConnect(connectionCfg config.Connection) *pgx.Conn {
-	return pg.NewConnection(
-		connectionCfg.User,
-		connectionCfg.Pass,
-		connectionCfg.Host,
-		connectionCfg.Port,
-		connectionCfg.Database,
-		false,
-	)
 }
 
 func projectPathFromArgsOrCwd() string {

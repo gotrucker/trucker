@@ -6,8 +6,8 @@ import (
 
 type testStruct struct {
 	A string `yaml:"a,omitempty"`
-	B int `yaml:"b,omitempty"`
-	C bool `yaml:"c,omitempty"`
+	B int    `yaml:"b,omitempty"`
+	C bool   `yaml:"c,omitempty"`
 	D string `yaml:"d,omitempty"`
 }
 
@@ -17,7 +17,7 @@ func TestLoadYmlWithEnv(t *testing.T) {
 	config := loadYml(
 		ymlPath,
 		testStruct{},
-		map[string]string{ "TEST_ENV_VAR": "some_value" },
+		map[string]string{"TEST_ENV_VAR": "some_value"},
 	)
 
 	if config.A != "b" {

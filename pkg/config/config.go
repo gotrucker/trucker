@@ -10,18 +10,18 @@ import (
 )
 
 type connectionYml struct {
-	Name            string `yaml:"name,omitempty"`
-	Adapter         string `yaml:"adapter,omitempty"`
-	Host            string `yaml:"host,omitempty"`
-	Port            uint16 `yaml:"port,omitempty"`
-	Database        string `yaml:"database,omitempty"`
-	User            string `yaml:"user,omitempty"`
-	Pass            string `yaml:"pass,omitempty"`
-	HostPath        string `yaml:"host_path,omitempty"`
-	PortPath        string `yaml:"port_path,omitempty"`
-	DatabasePath    string `yaml:"database_path,omitempty"`
-	UserPath        string `yaml:"user_path,omitempty"`
-	PassPath        string `yaml:"pass_path,omitempty"`
+	Name         string `yaml:"name,omitempty"`
+	Adapter      string `yaml:"adapter,omitempty"`
+	Host         string `yaml:"host,omitempty"`
+	Port         uint16 `yaml:"port,omitempty"`
+	Database     string `yaml:"database,omitempty"`
+	User         string `yaml:"user,omitempty"`
+	Pass         string `yaml:"pass,omitempty"`
+	HostPath     string `yaml:"host_path,omitempty"`
+	PortPath     string `yaml:"port_path,omitempty"`
+	DatabasePath string `yaml:"database_path,omitempty"`
+	UserPath     string `yaml:"user_path,omitempty"`
+	PassPath     string `yaml:"pass_path,omitempty"`
 }
 
 type configYml struct {
@@ -29,13 +29,13 @@ type configYml struct {
 }
 
 type Connection struct {
-	Name        string
-	Adapter     string
-	Host        string
-	Port        uint16
-	Database    string
-	User        string
-	Pass        string
+	Name     string
+	Adapter  string
+	Host     string
+	Port     uint16
+	Database string
+	User     string
+	Pass     string
 }
 
 type Config struct {
@@ -69,13 +69,13 @@ func Load(path string) Config {
 
 func connectionYmlToConnection(connYml connectionYml, basePath string) Connection {
 	connection := Connection{
-		Name:        connYml.Name,
-		Adapter:     connYml.Adapter,
-		Host:        connYml.Host,
-		Port:        connYml.Port,
-		Database:    connYml.Database,
-		User:        connYml.User,
-		Pass:        connYml.Pass,
+		Name:     connYml.Name,
+		Adapter:  connYml.Adapter,
+		Host:     connYml.Host,
+		Port:     connYml.Port,
+		Database: connYml.Database,
+		User:     connYml.User,
+		Pass:     connYml.Pass,
 	}
 
 	if connYml.HostPath != "" {

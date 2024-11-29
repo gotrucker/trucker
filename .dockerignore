@@ -1,0 +1,13 @@
+/.git/**
+/test/**
+/tmp/**
+.dockerignore
+.env
+.gitignore
+Dockerfile
+LICENSE
+Makefile
+README.md
+docker-compose.yml
+*_test.go
+/trucker

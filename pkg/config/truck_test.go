@@ -1,8 +1,8 @@
 package config
 
 import (
-	"testing"
 	"os"
+	"testing"
 )
 
 func TestLoadTrucks(t *testing.T) {
@@ -31,8 +31,8 @@ func TestLoadTrucks(t *testing.T) {
 		t.Error("Expected input table = public.whiskies, got", truck.Input.Table)
 	}
 
-	if truck.Output.Connection != "pgconn" {
-		t.Error("Expected output connection = pgconn, got", truck.Output.Connection)
+	if truck.Output.Connection != "chconn" {
+		t.Error("Expected output connection = chconn, got", truck.Output.Connection)
 	}
 
 	inputSql, err := os.ReadFile("../../test/fixtures/fake_project/truck1/input.sql")

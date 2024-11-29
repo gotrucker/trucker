@@ -7,7 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
+	"github.com/ClickHouse/clickhouse-go/v2"
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/tonyfg/trucker/pkg/config"
@@ -16,35 +19,66 @@ import (
 var (
 	_, b, _, _    = runtime.Caller(0)
 	Basepath      = filepath.Dir(b)
-	ConnectionCfg = config.Connection{
-		Name:     "test",
-		Adapter:  "pg",
+	PostgresCfg = config.Connection{
+		Name:     "test_pg",
+		Adapter:  "postgres",
 		Host:     "pg_input",
 		Port:     5432,
 		Database: "trucker",
 		User:     "trucker",
 	}
+	ClickhouseCfg = config.Connection{
+		Name: "test_ch",
+		Adapter: "clickhouse",
+		Host: "clickhouse",
+		Port: 9000,
+		Database: "trucker",
+		User: "trucker",
+		Pass: "trucker",
+	}
 )
 
-func PrepareTestDb() *pgx.Conn {
-	conn := Connect(ConnectionCfg)
-	LoadTestDb(conn)
+func PreparePostgresTestDb() *pgx.Conn {
+	conn := Connect(PostgresCfg)
+	sql := ReadTestDbSql(PostgresCfg.Adapter)
+	conn.Exec(context.Background(), sql)
 	return conn
 }
 
-func LoadTestDb(conn *pgx.Conn) {
-	sql := ReadTestDbSql()
-	conn.Exec(context.Background(), sql)
+func PrepareClickhouseTestDb() driver.Conn {
+	conn, err := clickhouse.Open(&clickhouse.Options{
+		Addr: []string{fmt.Sprintf("%s:%d", ClickhouseCfg.Host, ClickhouseCfg.Port)},
+		Auth: clickhouse.Auth{
+			Database: ClickhouseCfg.Database,
+			Username: ClickhouseCfg.User,
+			Password: ClickhouseCfg.Pass,
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	sql := ReadTestDbSql(ClickhouseCfg.Adapter)
+	stmts := strings.Split(sql, ";\n\n")
+
+	for _, stmt := range stmts {
+		err = conn.Exec(context.Background(), stmt)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	return conn
 }
 
 func Connect(connectionCfg config.Connection) *pgx.Conn {
 	connString := fmt.Sprintf(
 		"postgres://%s:%s@%s:%d/%s",
-		connectionCfg.User,
+		url.QueryEscape(connectionCfg.User),
 		url.QueryEscape(connectionCfg.Pass),
-		connectionCfg.Host,
+		url.QueryEscape(connectionCfg.Host),
 		connectionCfg.Port,
-		connectionCfg.Database)
+		url.QueryEscape(connectionCfg.Database))
 
 	config, err := pgx.ParseConfig(connString)
 	if err != nil {
@@ -61,8 +95,8 @@ func Connect(connectionCfg config.Connection) *pgx.Conn {
 	return conn
 }
 
-func ReadTestDbSql() string {
-	path := filepath.Join(Basepath, "../fixtures/fake_project/test_db.sql")
+func ReadTestDbSql(adapter string) string {
+	path := filepath.Join(Basepath, fmt.Sprintf("../fixtures/%s_test_db.sql", adapter))
 	schema, err := os.ReadFile(path)
 	if err != nil {
 		panic(err)

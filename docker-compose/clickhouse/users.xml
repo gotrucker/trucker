@@ -1,0 +1,6 @@
+<clickhouse replace="true">
+  <profiles>
+    <default>
+    </default>
+  </profiles>
+</clickhouse>

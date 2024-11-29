@@ -2,44 +2,47 @@ package integration_test
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
-	"fmt"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/jackc/pglogrepl"
 
-	"github.com/tonyfg/trucker/pkg/pg"
+	"github.com/tonyfg/trucker/pkg/db"
+	"github.com/tonyfg/trucker/pkg/postgres"
 	"github.com/tonyfg/trucker/test/helpers"
 )
 
 func TestStreamBackfillReadAndWrite(t *testing.T) {
-	conn := helpers.PrepareTestDb()
-	defer conn.Close(context.Background())
-	rc := pg.NewReplicationClient([]string{"public.whiskies"}, helpers.ConnectionCfg)
+	pgConn := helpers.PreparePostgresTestDb()
+	defer pgConn.Close(context.Background())
+	chConn := helpers.PrepareClickhouseTestDb()
+	defer chConn.Close()
+	rc := postgres.NewReplicationClient([]string{"public.whiskies"}, helpers.PostgresCfg)
 
-	r := pg.NewReader(
+	r := db.NewReader(
 		`SELECT r.id, r.name, r.age, t.name type, c.name country
 FROM {{ .rows }}
 JOIN public.whisky_types t ON r.whisky_type_id = t.id
 JOIN public.countries c ON c.id = t.country_id`,
-		conn,
+		helpers.PostgresCfg,
 	)
 
-	w := pg.NewWriter(
+	w := db.NewWriter(
 		"test",
-		`INSERT INTO public.whiskies_flat (id, name, age, type, country)
+		`INSERT INTO trucker.whiskies_flat (id, name, age, type, country)
 SELECT id, name, age, type, country
 FROM {{ .rows }}`,
-		conn,
+		helpers.ClickhouseCfg,
 	)
 
 	_, snapshotLsn, snapshotName := rc.Setup()
 
 	// Jack Daniels isn't supposed to show up in the backfill, since it was
 	// added after the snapshot was created. It should be streamed later on...
-	_, err := conn.Exec(
+	_, err := pgConn.Exec(
 		context.Background(),
 		"INSERT INTO public.whiskies (name, age, whisky_type_id) VALUES ('Jack Daniels', 7, 1)",
 	)
@@ -59,21 +62,25 @@ FROM {{ .rows }}`,
 		w.WithTransaction(func() { w.Write(cols, rows) })
 	}
 
-	expectedColumns := []string{"name", "age", "type", "country"}
+	expectedColumns := []string{"id", "name", "age", "type", "country"}
 	expectedRows := [][]any{
-		{"Glenfiddich", int32(15), "Single Malt", "Scotland"},
-		{"Lagavulin", int32(12), "Triple Distilled", "Ireland"},
-		{"Hibiki", int32(17), "Japanese", "Japan"},
-		{"Laphroaig", int32(10), "Salty", "Portugal"},
+		{int32(1), "Glenfiddich", int32(15), "Single Malt", "Scotland"},
+		{int32(2), "Lagavulin", int32(12), "Triple Distilled", "Ireland"},
+		{int32(3), "Hibiki", int32(17), "Japanese", "Japan"},
+		{int32(4), "Laphroaig", int32(10), "Salty", "Portugal"},
 	}
-	columns, rows := loadWhiskiesFlat(t, conn)
+	columns, rows := loadWhiskiesFlat(t, chConn)
 
 	if !reflect.DeepEqual(expectedColumns, columns) {
-		t.Errorf("Expected %T %v, got %T %v", expectedColumns, expectedColumns, columns, columns)
+		t.Errorf(`Expected
+    %T %v,
+got %T %v`, expectedColumns, expectedColumns, columns, columns)
 	}
 
 	if !reflect.DeepEqual(expectedRows, rows) {
-		t.Errorf("Expected %T %v, got %T %v", expectedRows, expectedRows, rows, rows)
+		t.Errorf(`Expected
+    %T %v,
+got %T %v`, expectedRows, expectedRows, rows, rows)
 	}
 
 	fmt.Println("Snapshot LSN", pglogrepl.LSN(snapshotLsn))
@@ -93,7 +100,7 @@ FROM {{ .rows }}`,
 
 		columns, values := r.Read("insert", changeset.InsertColumns, changeset.InsertValues)
 		w.WithTransaction(func() { w.Write(columns, values) })
-	case <-time.After(5 * time.Second):
+	case <-time.After(3 * time.Second):
 		t.Error("Reading from channel took too long...")
 	}
 
@@ -104,15 +111,15 @@ FROM {{ .rows }}`,
 		t.Error("Expected the channel to be closed, but got", changeset)
 	}
 
-	expectedColumns = []string{"name", "age", "type", "country"}
+	expectedColumns = []string{"id", "name", "age", "type", "country"}
 	expectedRows = [][]any{
-		{"Glenfiddich", int32(15), "Single Malt", "Scotland"},
-		{"Lagavulin", int32(12), "Triple Distilled", "Ireland"},
-		{"Hibiki", int32(17), "Japanese", "Japan"},
-		{"Laphroaig", int32(10), "Salty", "Portugal"},
-		{"Jack Daniels", int32(7), "Bourbon", "USA"},
+		{int32(1), "Glenfiddich", int32(15), "Single Malt", "Scotland"},
+		{int32(2), "Lagavulin", int32(12), "Triple Distilled", "Ireland"},
+		{int32(3), "Hibiki", int32(17), "Japanese", "Japan"},
+		{int32(4), "Laphroaig", int32(10), "Salty", "Portugal"},
+		{int32(5), "Jack Daniels", int32(7), "Bourbon", "USA"},
 	}
-	columns, rows = loadWhiskiesFlat(t, conn)
+	columns, rows = loadWhiskiesFlat(t, chConn)
 
 	if !reflect.DeepEqual(expectedColumns, columns) {
 		t.Errorf(`Expected
@@ -127,31 +134,23 @@ got %T %v`, expectedRows, expectedRows, rows, rows)
 	}
 }
 
-func loadWhiskiesFlat(t *testing.T, conn *pgx.Conn) ([]string, [][]any) {
+func loadWhiskiesFlat(t *testing.T, conn driver.Conn) ([]string, [][]any) {
 	rows, err := conn.Query(
 		context.Background(),
-		"SELECT name, age, type, country FROM public.whiskies_flat",
+		"SELECT id, name, age, type, country FROM trucker.whiskies_flat",
 	)
 	if err != nil {
 		t.Error(err)
 	}
 	defer rows.Close()
 
-	fields := rows.FieldDescriptions()
-	columns := make([]string, len(fields))
-	for i, field := range fields {
-		columns[i] = field.Name
-	}
-
 	rowValues := make([][]any, 0, 1)
 	for i := 0; rows.Next(); i++ {
-		values, err := rows.Values()
-		if err != nil {
-			panic(err)
-		}
-
-		rowValues = append(rowValues, values)
+		var id, age int32
+		var name, whiskyType, country string
+		rows.Scan(&id, &name, &age, &whiskyType, &country)
+		rowValues = append(rowValues, []any{id, name, age, whiskyType, country})
 	}
 
-	return columns, rowValues
+	return rows.Columns(), rowValues
 }

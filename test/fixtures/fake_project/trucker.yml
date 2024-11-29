@@ -5,3 +5,9 @@ connections:
   database: trucker
   user: trucker
   pass: pgpass
+- name: chconn
+  adapter: clickhouse
+  host: clickhouse
+  database: trucker
+  user: trucker
+  pass: trucker

@@ -2,5 +2,5 @@ input:
   connection: pgconn
   table: public.whiskies
 output:
-  connection: pgconn
-  table: public.whiskies_flat
+  connection: chconn
+  table: trucker.whiskies_flat
