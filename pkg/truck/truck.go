@@ -1,7 +1,7 @@
 package truck
 
 import (
-	"fmt"
+	// "fmt"
 	"log"
 
 	"github.com/tonyfg/trucker/pkg/config"
@@ -43,7 +43,6 @@ func NewTruck(cfg config.Truck, rc *postgres.ReplicationClient, connCfgs map[str
 
 func (t *Truck) Backfill(snapshotName string, targetLSN int64) {
 	log.Printf("[Truck %s] Running backfill...\n", t.Name)
-	t.Writer.TruncateTable(t.OutputTable)
 	backfillChan := t.ReplicationClient.StreamBackfillData(t.InputTable, snapshotName)
 
 	for {
@@ -60,7 +59,11 @@ func (t *Truck) Backfill(snapshotName string, targetLSN int64) {
 
 		cols, rows := t.Reader.Read("insert", backfillBatch.Columns, backfillBatch.Rows)
 		log.Printf("Backfilling %d rows...\n", len(rows))
-		t.Writer.Write(cols, rows)
+		if len(rows) > 0 {
+			t.Writer.Write(cols, rows)
+		} else {
+			log.Printf("Empty row batch after read query... Skipping\n")
+		}
 	}
 }
 
@@ -88,11 +91,11 @@ func (t *Truck) Start() {
 					deleteCols, deleteVals := t.Reader.Read("delete", changeset.DeleteColumns, changeset.DeleteValues)
 
 					t.Writer.WithTransaction(func() {
-						fmt.Println("Inserting:", insertCols, insertVals)
+						// fmt.Println("Inserting:", insertCols, insertVals)
 						t.Writer.Write(insertCols, insertVals)
-						fmt.Println("Updating:", updateCols, updateVals)
+						// fmt.Println("Updating:", updateCols, updateVals)
 						t.Writer.Write(updateCols, updateVals)
-						fmt.Println("Deleting:", deleteCols, deleteVals)
+						// fmt.Println("Deleting:", deleteCols, deleteVals)
 						t.Writer.Write(deleteCols, deleteVals)
 					})
 				}

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/netip"
 	"strings"
 	"time"
 
@@ -28,7 +29,6 @@ type WalChange struct {
 	ColumnValues []any    `json:"columnvalues"`
 	OldKeys      struct {
 		KeyNames  []string `json:"keynames"`
-		KeyTypes  []string `json:"keytypes"`
 		KeyValues []any    `json:"keyvalues"`
 	} `json:"oldkeys"`
 }
@@ -185,6 +185,10 @@ func sqlType(value any) string {
 		return "::json"
 	case map[string]any:
 		return "::json"
+	case netip.Addr:
+		return "::inet"
+	case netip.Prefix:
+		return "::cidr"
 	default:
 		return ""
 	}

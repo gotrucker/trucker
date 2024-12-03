@@ -9,7 +9,9 @@ import (
 )
 
 func TestRead(t *testing.T) {
-	r := readerTestSetup()
+	r := readerTestSetup(`SELECT '{{ .operation }}' op, r.id, r.name, r.age, t.name type
+FROM {{ .rows }}
+JOIN whisky_types t ON t.id = r.whisky_type_id`)
 	defer r.Close()
 
 	columns := []string{"id", "name", "age", "whisky_type_id"}
@@ -34,12 +36,33 @@ func TestRead(t *testing.T) {
 	}
 }
 
-func readerTestSetup() *Reader {
+func TestReadTypes(t *testing.T) {
+	r := readerTestSetup(`SELECT * FROM {{ .rows }}`)
+	defer r.Close()
+
+	rows, err := r.conn.Query(context.Background(), "SELECT * FROM weird_types")
+	if err != nil {
+		t.Fatalf("Query failed: %v\n", err)
+	}
+
+	columns := make([]string, len(rows.FieldDescriptions()))
+	for i, field := range rows.FieldDescriptions() {
+		columns[i] = field.Name
+	}
+
+	rowValues := make([][]any, 0, 1)
+	for i := 0; rows.Next(); i++ {
+		values, err := rows.Values()
+		if err != nil {
+			t.Fatalf("Failed to get values: %v\n", err)
+		}
+		rowValues = append(rowValues, values)
+	}
+
+	r.Read("insert", columns, rowValues)
+}
+
+func readerTestSetup(inputSql string) *Reader {
 	helpers.PreparePostgresTestDb().Close(context.Background())
-	return NewReader(
-		`SELECT '{{ .operation }}' op, r.id, r.name, r.age, t.name type
-FROM {{ .rows }}
-JOIN whisky_types t ON t.id = r.whisky_type_id`,
-		helpers.PostgresCfg,
-	)
+	return NewReader(inputSql, helpers.PostgresCfg,)
 }

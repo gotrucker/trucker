@@ -27,9 +27,9 @@ func LoadTrucks(projectPath string, cfg Config) []Truck {
 		log.Fatal(err)
 	}
 
-	trucks := make([]Truck, 1, 1)
-	for i, ymlPath := range ymlPaths {
-		trucks[i] = loadTruck(ymlPath, cfg)
+	trucks := make([]Truck, 0, 1)
+	for _, ymlPath := range ymlPaths {
+		trucks = append(trucks, loadTruck(ymlPath, cfg))
 	}
 
 	return trucks

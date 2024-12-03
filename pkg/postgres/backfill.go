@@ -23,6 +23,13 @@ func (client *ReplicationClient) StreamBackfillData(table string, snapshotName s
 		if err != nil {
 			panic(err)
 		}
+		defer func() {
+			_, err := client.conn.Exec(context.Background(), "ROLLBACK")
+			if err != nil {
+				panic(err)
+			}
+		}()
+
 		_, err = client.conn.Exec(context.Background(), fmt.Sprintf("SET TRANSACTION SNAPSHOT '%s'", snapshotName))
 		if err != nil {
 			panic(err)
