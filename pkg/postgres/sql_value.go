@@ -71,9 +71,12 @@ func makeChangesets(wal2jsonChanges []byte) map[string]*Changeset {
 
 		switch change.Kind {
 		case "insert":
+			oldColumns := addPrefix(change.ColumnNames, "old__")
+			nils := make([]any, len(change.ColumnNames))
 			changeset.InsertColumns, changeset.InsertValues = appendChanges(
 				changeset.InsertColumns, changeset.InsertValues,
-				change.ColumnNames, change.ColumnValues,
+				append(change.ColumnNames, oldColumns...),
+				append(change.ColumnValues, nils...),
 			)
 		case "update":
 			oldColumns := addPrefix(change.OldKeys.KeyNames, "old__")
@@ -84,11 +87,12 @@ func makeChangesets(wal2jsonChanges []byte) map[string]*Changeset {
 			)
 		case "delete":
 			oldColumns := addPrefix(change.OldKeys.KeyNames, "old__")
+			nils := make([]any, len(change.OldKeys.KeyNames))
 			changeset.DeleteColumns, changeset.DeleteValues = appendChanges(
 				changeset.DeleteColumns, changeset.DeleteValues,
-				oldColumns, change.OldKeys.KeyValues,
+				append(change.OldKeys.KeyNames, oldColumns...),
+				append(change.OldKeys.KeyValues, nils...),
 			)
-
 		default:
 			log.Fatalf("Unknown operation: %s\n", change.Kind)
 		}
