@@ -90,7 +90,7 @@ func makeChangesets(wal2jsonChanges []byte) map[string]*Changeset {
 			nils := make([]any, len(change.OldKeys.KeyNames))
 			changeset.DeleteColumns, changeset.DeleteValues = appendChanges(
 				changeset.DeleteColumns, changeset.DeleteValues,
-				append(change.OldKeys.KeyNames, oldColumns...),
+				append(oldColumns, change.OldKeys.KeyNames...),
 				append(change.OldKeys.KeyValues, nils...),
 			)
 		default:
@@ -102,10 +102,11 @@ func makeChangesets(wal2jsonChanges []byte) map[string]*Changeset {
 }
 
 func addPrefix(strings []string, prefix string) []string {
+	prefixed := make([]string, len(strings))
 	for i, str := range strings {
-		strings[i] = prefix + str
+		prefixed[i] = prefix + str
 	}
-	return strings
+	return prefixed
 }
 
 func appendChanges(columns []string, values [][]any, newColumns []string, newValues []any) ([]string, [][]any) {

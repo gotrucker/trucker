@@ -64,13 +64,9 @@ func loadTruck(path string, cfg Config) Truck {
 	}
 
 	log.Printf(
-		"Configured truck: %s:%s -> %s:%s\nInput SQL:\n%s\nOutput SQL:\n%s\n\n",
-		truck.Input.Connection,
-		truck.Input.Table,
-		truck.Output.Connection,
-		truck.Output.Table,
-		truck.Input.Sql,
-		truck.Output.Sql,
+		"Configured truck: %s:%s -> %s:%s\n",
+		truck.Input.Connection, truck.Input.Table,
+		truck.Output.Connection, truck.Output.Table,
 	)
 
 	return truck

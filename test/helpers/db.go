@@ -41,7 +41,11 @@ var (
 func PreparePostgresTestDb() *pgx.Conn {
 	conn := Connect(PostgresCfg)
 	sql := ReadTestDbSql(PostgresCfg.Adapter)
-	conn.Exec(context.Background(), sql)
+	_, err := conn.Exec(context.Background(), sql)
+	if err != nil {
+		panic(err)
+	}
+
 	return conn
 }
 

@@ -36,17 +36,20 @@ func TestMakeChangesets(t *testing.T) {
 	}
 
 	changes := tableChanges["public.whiskies"]
-	if !reflect.DeepEqual(changes.InsertColumns, []string{"id", "name", "age", "whisky_type_id"}) {
+	if !reflect.DeepEqual(
+		changes.InsertColumns,
+		[]string{"id", "name", "age", "whisky_type_id", "old__id", "old__name", "old__age", "old__whisky_type_id"},
+	) {
 		t.Errorf(`Expected InsertColumns to be
-    ['id', 'name', 'age', 'whisky_type_id']
+    ['id', 'name', 'age', 'whisky_type_id', 'old__id', 'old__name', 'old__age', 'old__whisky_type_id']
 got %v`,
 			changes.InsertColumns)
 	}
 
 	expectedInsertVals := [][]any{
-		{json.Number("3"), "a", json.Number("12"), json.Number("1")},
-		{json.Number("4"), "b", json.Number("15"), json.Number("2")},
-		{json.Number("5"), "c", json.Number("18"), json.Number("3")},
+		{json.Number("3"), "a", json.Number("12"), json.Number("1"), nil, nil, nil, nil},
+		{json.Number("4"), "b", json.Number("15"), json.Number("2"), nil, nil, nil, nil},
+		{json.Number("5"), "c", json.Number("18"), json.Number("3"), nil, nil, nil, nil},
 	}
 	if !reflect.DeepEqual(changes.InsertValues, expectedInsertVals) {
 		t.Errorf(`Expected InsertValues to be
@@ -77,19 +80,22 @@ got %v`,
 got %v`, expectedUpdateVals, changes.UpdateValues)
 	}
 
-	if !reflect.DeepEqual(changes.DeleteColumns, []string{"old__id", "old__name", "old__age", "old__whisky_type_id"}) {
+	if !reflect.DeepEqual(
+		changes.DeleteColumns,
+		[]string{"old__id", "old__name", "old__age", "old__whisky_type_id", "id", "name", "age", "whisky_type_id"},
+	) {
 		t.Errorf(
 			`Expected DeleteColumns to be
-    ['old__id', 'old__name', 'old__age', 'old__whisky_type_id']
+    ['old__id', 'old__name', 'old__age', 'old__whisky_type_id', 'id', 'name', 'age', 'whisky_type_id']
 got %v`,
 			changes.DeleteColumns)
 	}
 
 	expectedDeleteVals := [][]any{
-		{json.Number("4"), "boda4", json.Number("15"), json.Number("2")},
-		{json.Number("5"), "boda5", json.Number("18"), json.Number("3")},
-		{json.Number("1"), "boda1", json.Number("15"), json.Number("4")},
-		{json.Number("3"), "boda3", json.Number("12"), json.Number("1")},
+		{json.Number("4"), "boda4", json.Number("15"), json.Number("2"), nil, nil, nil, nil},
+		{json.Number("5"), "boda5", json.Number("18"), json.Number("3"), nil, nil, nil, nil},
+		{json.Number("1"), "boda1", json.Number("15"), json.Number("4"), nil, nil, nil, nil},
+		{json.Number("3"), "boda3", json.Number("12"), json.Number("1"), nil, nil, nil, nil},
 	}
 	if !reflect.DeepEqual(changes.DeleteValues, expectedDeleteVals) {
 		t.Errorf(`Expected DeleteValues to be

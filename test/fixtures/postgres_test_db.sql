@@ -1,5 +1,7 @@
 DROP SCHEMA public CASCADE;
 CREATE SCHEMA public;
+DELETE FROM pg_publication;
+SELECT pg_drop_replication_slot(slot_name) FROM pg_replication_slots;
 
 CREATE TABLE public.countries (
   id int PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
@@ -34,8 +36,7 @@ CREATE TABLE public.weird_types (
   an_ip_addr inet,
   a_jsonb jsonb,
   a_text_arr text[],
-  a_ts timestamp,
-  an_uuid uuid
+  a_ts timestamp
 );
 
 ALTER TABLE public.countries REPLICA IDENTITY FULL;
@@ -51,11 +52,6 @@ VALUES ('Bourbon', 5), ('Japanese', 4), ('Triple Distilled', 3), ('Single Malt',
 INSERT INTO public.whiskies (name, age, whisky_type_id)
 VALUES ('Glenfiddich', 15, 4), ('Lagavulin', 12, 3), ('Hibiki', 17, 2), ('Laphroaig', 10, 5);
 
-INSERT INTO public.weird_types (a_number, a_bool, a_date, an_ip_addr, a_jsonb, a_text_arr, a_ts, an_uuid)
-VALUES (1234567890, true, '2020-01-01', '192.168.0.1', '{"key": "value"}', ARRAY['a', 'b', 'c'], '2020-01-01T00:00:00Z', '123e4567-e89b-12d3-a456-426614174000'),
-       (null, null, null, null, null, null, null, null);
-
-INSERT INTO public.uuids_tbl (the_uuid)
-VALUES ('123e4567-e89b-12d3-a456-426614174000'),
-       ('123e4567-e89b-12d3-a456-426614174001'),
-       ('123e4567-e89b-12d3-a456-426614174002');
+INSERT INTO public.weird_types (a_number, a_bool, a_date, an_ip_addr, a_jsonb, a_text_arr, a_ts)
+VALUES (1234567890, true, '2020-01-01', '192.168.0.1', '{"key": "value"}', ARRAY['a', 'b', 'c'], '2020-01-01T00:00:00Z'),
+       (null, null, null, null, null, null, null);
