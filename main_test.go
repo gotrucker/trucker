@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/tonyfg/trucker/test/helpers"
 )
@@ -16,7 +17,8 @@ var (
 )
 
 func TestDoTheThing(t *testing.T) {
-	helpers.PreparePostgresTestDb().Close(context.Background())
+	pgConn := helpers.PreparePostgresTestDb()
+	defer pgConn.Close(context.Background())
 	chConn := helpers.PrepareClickhouseTestDb()
 	defer chConn.Close()
 
@@ -27,10 +29,39 @@ func TestDoTheThing(t *testing.T) {
 
 	go doTheThing(Basepath + "/test/fixtures/fake_project")
 
-	var cnt int64
-	row := chConn.QueryRow(context.Background(), "SELECT count(*) FROM whisky_types_flat")
-	row.Scan(&cnt)
-	if cnt == 0 {
-		t.Error("Expected some rows in whisky_types_flat but found none")
+	i := 0
+	for {
+		var cnt uint64
+		row := chConn.QueryRow(context.Background(), "SELECT count(*) FROM trucker.whiskies_flat")
+		row.Scan(&cnt)
+
+		if cnt == 4 {
+			break
+		} else if i > 10 {
+			t.Error("Expected 4 rows in whiskies_flat but found ", cnt)
+			break
+		}
+
+		time.Sleep(300 * time.Millisecond)
+		i+=1
+	}
+
+	pgConn.Exec(context.Background(), "INSERT INTO public.whiskies (name, age, whisky_type_id) VALUES ('Jack Daniels', 5, 1)")
+
+	i = 0
+	for {
+		var cnt uint64
+		row := chConn.QueryRow(context.Background(), "SELECT count(*) FROM trucker.whiskies_flat")
+		row.Scan(&cnt)
+
+		if cnt == 5 {
+			break
+		} else if i > 10 {
+			t.Error("Expected 5 rows in whiskies_flat but found ", cnt)
+			break
+		}
+
+		time.Sleep(300 * time.Millisecond)
+		i+=1
 	}
 }

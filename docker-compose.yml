@@ -90,5 +90,5 @@ services:
       CLICKHOUSE_DB: trucker
       CLICKHOUSE_USER: trucker
       CLICKHOUSE_PASSWORD: trucker
-    # ports:
-    # - 80:8123
+    ports:
+    - 8123:8123
