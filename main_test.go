@@ -43,7 +43,7 @@ func TestDoTheThing(t *testing.T) {
 		}
 
 		time.Sleep(300 * time.Millisecond)
-		i+=1
+		i += 1
 	}
 
 	pgConn.Exec(context.Background(), "INSERT INTO public.whiskies (name, age, whisky_type_id) VALUES ('Jack Daniels', 5, 1)")
@@ -62,6 +62,6 @@ func TestDoTheThing(t *testing.T) {
 		}
 
 		time.Sleep(300 * time.Millisecond)
-		i+=1
+		i += 1
 	}
 }

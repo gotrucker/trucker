@@ -1,3 +1,6 @@
+// Clickhouse values literal:
+// SELECT * FROM VALUES('column1 Integer, column2 Integer', (1, 2), (3, 4))
+
 package clickhouse
 
 import (

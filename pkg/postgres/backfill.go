@@ -39,17 +39,18 @@ func (client *ReplicationClient) StreamBackfillData(table string, snapshotName s
 		//       query is not ideal. Maybe in the future we can find a way to
 		//       directly use the table itself on the input query (just for the
 		//       backfill of course)
-		rows, err := client.conn.Query(context.Background(), fmt.Sprintf("SELECT * FROM %s", table))
+		rows, err := client.conn.Query(context.Background(), "SELECT * FROM " + table)
 		if err != nil {
-			log.Fatalf("Query failed: %v\n", err)
+			log.Fatalln("Query failed: ", err)
 		}
 		defer rows.Close()
 
 		fields := rows.FieldDescriptions()
-		columns := make([]string, len(fields))
+		columns := make([]string, len(fields), len(fields) * 2)
 		for i, field := range fields {
 			columns[i] = field.Name
 		}
+		columns = append(columns, addPrefix(columns, "old__")...)
 
 		cappedBatchSize := maxPreparedStatementArgs / (len(columns) + 1)
 		if cappedBatchSize > backfillBatchSize {
@@ -64,7 +65,7 @@ func (client *ReplicationClient) StreamBackfillData(table string, snapshotName s
 				panic(err)
 			}
 
-			rowValues = append(rowValues, values)
+			rowValues = append(rowValues, append(values, make([]any, len(fields))...))
 
 			if i >= cappedBatchSize {
 				changesChan <- &BackfillBatch{Columns: columns, Rows: rowValues}

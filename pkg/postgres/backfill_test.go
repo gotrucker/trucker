@@ -26,17 +26,17 @@ func TestStreamBackfillData(t *testing.T) {
 	changesChan := rc.StreamBackfillData("public.countries", snapshotName)
 	select {
 	case res := <-changesChan:
-		expectedInsertCols := []string{"id", "name"}
+		expectedInsertCols := []string{"id", "name", "old__id", "old__name"}
 		if !reflect.DeepEqual(res.Columns, expectedInsertCols) {
 			t.Errorf("Expected InsertCols to be %v but got %v", expectedInsertCols, res.Columns)
 		}
 
 		expectedValues := [][]any{
-			{int32(1), "Portugal"},
-			{int32(2), "Scotland"},
-			{int32(3), "Ireland"},
-			{int32(4), "Japan"},
-			{int32(5), "USA"},
+			{int32(1), "Portugal", nil, nil},
+			{int32(2), "Scotland", nil, nil},
+			{int32(3), "Ireland", nil, nil},
+			{int32(4), "Japan", nil, nil},
+			{int32(5), "USA", nil, nil},
 		}
 		if !reflect.DeepEqual(res.Rows, expectedValues) {
 			t.Errorf("Expected Values to be %v but got %v", expectedValues, res.Rows)

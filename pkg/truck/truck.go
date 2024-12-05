@@ -91,11 +91,8 @@ func (t *Truck) Start() {
 					deleteCols, deleteVals := t.Reader.Read("delete", changeset.DeleteColumns, changeset.DeleteValues)
 
 					t.Writer.WithTransaction(func() {
-						// fmt.Println("Inserting:", insertCols, insertVals)
 						t.Writer.Write(insertCols, insertVals)
-						// fmt.Println("Updating:", updateCols, updateVals)
 						t.Writer.Write(updateCols, updateVals)
-						// fmt.Println("Deleting:", deleteCols, deleteVals)
 						t.Writer.Write(deleteCols, deleteVals)
 					})
 				}

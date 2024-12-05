@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -66,11 +65,6 @@ func TestStart(t *testing.T) {
 		}
 
 		expectedInsertValues := [][]any{{json.Number("6"), "Jamaica", nil, nil}}
-		for _, row := range change.InsertValues {
-			for _, value := range row {
-				fmt.Printf("val: %v, type: %T\n", value, value)
-			}
-		}
 		if !reflect.DeepEqual(change.InsertValues, expectedInsertValues) {
 			t.Errorf("Expected Values to be %v but got %v", expectedInsertValues, change.InsertValues)
 		}
