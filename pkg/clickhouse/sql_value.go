@@ -37,7 +37,6 @@ func makeValuesLiteral(columns []string, rows [][]any) (valuesLiteral *strings.B
 				sb.WriteByte(',')
 			}
 
-			// sb.WriteString(fmt.Sprintf("$%d::%s", (i*len(row))+j+1, sqlType(val)))
 			sb.WriteString(fmt.Sprintf("$%d", (i*len(row))+j+1))
 			values = append(values, val)
 		}
@@ -78,6 +77,34 @@ func sqlType(value any) string {
 		return "DateTime64"
 	case bool:
 		return "Boolean"
+	case []string:
+		return "Array(String)"
+	case []int8:
+		return "Array(Int8)"
+	case []int16:
+		return "Array(Int16)"
+	case []int32:
+		return "Array(Int32)"
+	case []int, []int64:
+		return "Array(Int64)"
+	case []uint8:
+		return "Array(UInt8)"
+	case []uint16:
+		return "Array(UInt16)"
+	case []uint32:
+		return "Array(UInt32)"
+	case []uint, []uint64:
+		return "Array(UInt64)"
+	case []json.Number, []pgtype.Numeric:
+		return "Array(Decimal)"
+	case []float32:
+		return "Array(Float32)"
+	case []float64:
+		return "Array(Float64)"
+	case []time.Time:
+		return "Array(DateTime64)"
+	case []bool:
+		return "Array(Boolean)"
 	// FIXME: Clickhouse JSON support is experimental. How do we deal with these?
 	// case []any:
 	// 	return "json"

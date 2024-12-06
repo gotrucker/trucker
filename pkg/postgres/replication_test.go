@@ -52,6 +52,7 @@ func TestStart(t *testing.T) {
 
 	changesChan := rc.Start(backfillLSN, 0)
 
+	// TODO: Check types are correct
 	select {
 	case res := <-changesChan:
 		if len(res) != 1 {
@@ -80,7 +81,75 @@ func TestStart(t *testing.T) {
 		t.Error("Reading from replication stream took too long...")
 	}
 
-	// TODO: Test updates and deletes
+	_, err = conn.Exec(
+		context.Background(),
+		"UPDATE public.countries SET name = 'Jameca' WHERE name = 'Jamaica'")
+	if err != nil {
+		t.Error(err)
+	}
+
+	select {
+	case res := <-changesChan:
+		if len(res) != 1 {
+			t.Error("Expected to receive 1 change, but got", len(res))
+		}
+		change := res["public.countries"]
+
+		expectedUpdateCols := []string{"id", "name", "old__id", "old__name"}
+		if !reflect.DeepEqual(change.UpdateColumns, expectedUpdateCols) {
+			t.Errorf("Expected UpdateCols to be %v but got %v", expectedUpdateCols, change.UpdateColumns)
+		}
+
+		expectedUpdateValues := [][]any{{json.Number("6"), "Jameca", json.Number("6"), "Jamaica"}}
+		if !reflect.DeepEqual(change.UpdateValues, expectedUpdateValues) {
+			t.Errorf("Expected Values to be %v but got %v", expectedUpdateValues, change.UpdateValues)
+		}
+
+		if len(change.InsertColumns) > 0 || len(change.InsertValues) > 0 {
+			t.Error("Expected InsertColumns to be empty, but got", change.UpdateColumns)
+		}
+
+		if len(change.DeleteColumns) > 0 || len(change.DeleteValues) > 0 {
+			t.Error("Expected DeleteColumns to be empty, but got", change.DeleteColumns)
+		}
+	case <-time.After(1000 * time.Millisecond):
+		t.Error("Reading from replication stream took too long...")
+	}
+
+	_, err = conn.Exec(
+		context.Background(),
+		"DELETE FROM public.countries WHERE name = 'Jameca'")
+	if err != nil {
+		t.Error(err)
+	}
+
+	select {
+	case res := <-changesChan:
+		if len(res) != 1 {
+			t.Error("Expected to receive 1 change, but got", len(res))
+		}
+		change := res["public.countries"]
+
+		expectedDeleteCols := []string{"old__id", "old__name", "id", "name"}
+		if !reflect.DeepEqual(change.DeleteColumns, expectedDeleteCols) {
+			t.Errorf("Expected UpdateCols to be %v but got %v", expectedDeleteCols, change.DeleteColumns)
+		}
+
+		expectedDeleteValues := [][]any{{json.Number("6"), "Jameca", nil, nil}}
+		if !reflect.DeepEqual(change.DeleteValues, expectedDeleteValues) {
+			t.Errorf("Expected Values to be %v but got %v", expectedDeleteValues, change.DeleteValues)
+		}
+
+		if len(change.InsertColumns) > 0 || len(change.InsertValues) > 0 {
+			t.Error("Expected InsertColumns to be empty, but got", change.UpdateColumns)
+		}
+
+		if len(change.UpdateColumns) > 0 || len(change.UpdateValues) > 0 {
+			t.Error("Expected UpdateColumns to be empty, but got", change.DeleteColumns)
+		}
+	case <-time.After(1000 * time.Millisecond):
+		t.Error("Reading from replication stream took too long...")
+	}
 }
 
 func replicationTestSetup() (*pgx.Conn, *ReplicationClient) {
