@@ -8,7 +8,7 @@ import (
 )
 
 type Reader interface {
-	Read(operation string, columns []string, rowValues [][]any) ([]string, [][]any)
+	Read(operation string, columns []string, types []string, rowValues [][]any) ([]string, [][]any)
 	Close()
 }
 

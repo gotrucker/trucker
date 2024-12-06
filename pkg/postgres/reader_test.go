@@ -15,12 +15,13 @@ JOIN whisky_types t ON t.id = r.whisky_type_id`)
 	defer r.Close()
 
 	columns := []string{"id", "name", "age", "whisky_type_id"}
+	types := []string{"int8", "text", "int8", "int8"}
 	rows := [][]any{
 		{1, "Glenfiddich", 15, 4},
 		{3, "Hibiki", 17, 2},
 	}
 
-	cols, vals := r.Read("insert", columns, rows)
+	cols, vals := r.Read("insert", columns, types, rows)
 
 	expectedCols := []string{"op", "id", "name", "age", "type"}
 	if !reflect.DeepEqual(cols, expectedCols) {
@@ -46,8 +47,10 @@ func TestReadTypes(t *testing.T) {
 	}
 
 	columns := make([]string, len(rows.FieldDescriptions()))
+	types := make([]string, len(rows.FieldDescriptions()))
 	for i, field := range rows.FieldDescriptions() {
 		columns[i] = field.Name
+		types[i] = sqlTypeFromOID(field.DataTypeOID)
 	}
 
 	rowValues := make([][]any, 0, 1)
@@ -59,7 +62,7 @@ func TestReadTypes(t *testing.T) {
 		rowValues = append(rowValues, values)
 	}
 
-	r.Read("insert", columns, rowValues)
+	r.Read("insert", columns, types, rowValues)
 }
 
 func readerTestSetup(inputSql string) *Reader {

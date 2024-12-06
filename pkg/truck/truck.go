@@ -57,7 +57,7 @@ func (t *Truck) Backfill(snapshotName string, targetLSN int64) {
 			break
 		}
 
-		cols, rows := t.Reader.Read("insert", backfillBatch.Columns, backfillBatch.Rows)
+		cols, rows := t.Reader.Read("insert", backfillBatch.Columns, backfillBatch.Types, backfillBatch.Rows)
 		log.Printf("Backfilling %d rows...\n", len(rows))
 		if len(rows) > 0 {
 			t.Writer.Write(cols, rows)
@@ -86,9 +86,9 @@ func (t *Truck) Start() {
 					log.Printf("[Truck %s] Changeset channel closed. Exiting...\n", t.Name)
 					return
 				} else {
-					insertCols, insertVals := t.Reader.Read("insert", changeset.InsertColumns, changeset.InsertValues)
-					updateCols, updateVals := t.Reader.Read("update", changeset.UpdateColumns, changeset.UpdateValues)
-					deleteCols, deleteVals := t.Reader.Read("delete", changeset.DeleteColumns, changeset.DeleteValues)
+					insertCols, insertVals := t.Reader.Read("insert", changeset.InsertColumns, changeset.InsertTypes, changeset.InsertValues)
+					updateCols, updateVals := t.Reader.Read("update", changeset.UpdateColumns, changeset.UpdateTypes, changeset.UpdateValues)
+					deleteCols, deleteVals := t.Reader.Read("delete", changeset.DeleteColumns, changeset.DeleteTypes, changeset.DeleteValues)
 
 					t.Writer.WithTransaction(func() {
 						t.Writer.Write(insertCols, insertVals)

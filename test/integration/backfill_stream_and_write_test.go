@@ -59,7 +59,7 @@ FROM {{ .rows }}`,
 			break
 		}
 
-		cols, rows := r.Read("insert", backfillBatch.Columns, backfillBatch.Rows)
+		cols, rows := r.Read("insert", backfillBatch.Columns, backfillBatch.Types, backfillBatch.Rows)
 		w.WithTransaction(func() { w.Write(cols, rows) })
 	}
 
@@ -99,7 +99,7 @@ got %T %v`, expectedRows, expectedRows, rows, rows)
 			t.Errorf("Expected 0 deletes, got %d", len(changeset.DeleteValues))
 		}
 
-		columns, values := r.Read("insert", changeset.InsertColumns, changeset.InsertValues)
+		columns, values := r.Read("insert", changeset.InsertColumns, changeset.InsertTypes, changeset.InsertValues)
 		w.WithTransaction(func() { w.Write(columns, values) })
 	case <-time.After(3 * time.Second):
 		t.Error("Reading from channel took too long...")

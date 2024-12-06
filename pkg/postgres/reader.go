@@ -3,7 +3,6 @@ package postgres
 import (
 	"bytes"
 	"context"
-	// "log"
 	"text/template"
 
 	"github.com/jackc/pgx/v5"
@@ -30,12 +29,12 @@ func NewReader(readQuery string, cfg config.Connection) *Reader {
 // - transform the input args into a postgres values literal
 // - feed that to the template as a .rows variable
 // - run the query with values args and return the result
-func (r *Reader) Read(operation string, columns []string, rowValues [][]any) ([]string, [][]any) {
+func (r *Reader) Read(operation string, columns []string, types []string, rowValues [][]any) ([]string, [][]any) {
 	if len(columns) == 0 || len(rowValues) == 0 {
 		return nil, nil
 	}
 
-	valuesLiteral, values := makeValuesLiteral(columns, rowValues)
+	valuesLiteral, values := makeValuesLiteral(columns, types, rowValues)
 	tmplVars := map[string]string{
 		"operation": operation,
 		"rows":      valuesLiteral.String(),

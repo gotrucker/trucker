@@ -70,7 +70,11 @@ func (w *Writer) Write(columns []string, values [][]any) {
 		return
 	}
 
-	valuesLiteral, flatValues := makeValuesLiteral(columns, values)
+	types := make([]string, len(columns))
+	for i := range columns {
+		types[i] = sqlTypeFromGoValue(values[0][i])
+	}
+	valuesLiteral, flatValues := makeValuesLiteral(columns, types, values)
 
 	tmplVars := map[string]string{"rows": valuesLiteral.String()}
 	sql := new(bytes.Buffer)

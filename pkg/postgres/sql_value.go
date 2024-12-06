@@ -1,6 +1,3 @@
-// Clickhouse values literal
-// SELECT * FROM VALUES('column1 Integer, column2 Integer', (1, 2), (3, 4))
-
 package postgres
 
 import (
@@ -26,9 +23,11 @@ type WalChange struct {
 	Schema       string   `json:"schema"`
 	Table        string   `json:"table"`
 	ColumnNames  []string `json:"columnnames"`
+	ColumnTypes  []string `json:"columntypes"`
 	ColumnValues []any    `json:"columnvalues"`
 	OldKeys      struct {
 		KeyNames  []string `json:"keynames"`
+		KeyTypes  []string `json:"keytypes"`
 		KeyValues []any    `json:"keyvalues"`
 	} `json:"oldkeys"`
 }
@@ -36,10 +35,13 @@ type WalChange struct {
 type Changeset struct {
 	Table         string
 	InsertColumns []string
+	InsertTypes   []string
 	InsertValues  [][]any
 	UpdateColumns []string
+	UpdateTypes   []string
 	UpdateValues  [][]any
 	DeleteColumns []string
+	DeleteTypes   []string
 	DeleteValues  [][]any
 }
 
@@ -72,25 +74,29 @@ func makeChangesets(wal2jsonChanges []byte) map[string]*Changeset {
 		switch change.Kind {
 		case "insert":
 			oldColumns := addPrefix(change.ColumnNames, "old__")
+
 			nils := make([]any, len(change.ColumnNames))
-			changeset.InsertColumns, changeset.InsertValues = appendChanges(
-				changeset.InsertColumns, changeset.InsertValues,
+			changeset.InsertColumns, changeset.InsertTypes, changeset.InsertValues = appendChanges(
+				changeset.InsertColumns, changeset.InsertTypes, changeset.InsertValues,
 				append(change.ColumnNames, oldColumns...),
+				append(change.ColumnTypes, change.ColumnTypes...),
 				append(change.ColumnValues, nils...),
 			)
 		case "update":
 			oldColumns := addPrefix(change.OldKeys.KeyNames, "old__")
-			changeset.UpdateColumns, changeset.UpdateValues = appendChanges(
-				changeset.UpdateColumns, changeset.UpdateValues,
+			changeset.UpdateColumns, changeset.UpdateTypes, changeset.UpdateValues = appendChanges(
+				changeset.UpdateColumns, changeset.UpdateTypes, changeset.UpdateValues,
 				append(change.ColumnNames, oldColumns...),
+				append(change.ColumnTypes, change.OldKeys.KeyTypes...),
 				append(change.ColumnValues, change.OldKeys.KeyValues...),
 			)
 		case "delete":
 			oldColumns := addPrefix(change.OldKeys.KeyNames, "old__")
 			nils := make([]any, len(change.OldKeys.KeyNames))
-			changeset.DeleteColumns, changeset.DeleteValues = appendChanges(
-				changeset.DeleteColumns, changeset.DeleteValues,
+			changeset.DeleteColumns, changeset.DeleteTypes, changeset.DeleteValues = appendChanges(
+				changeset.DeleteColumns, changeset.DeleteTypes, changeset.DeleteValues,
 				append(oldColumns, change.OldKeys.KeyNames...),
+				append(change.OldKeys.KeyTypes, change.OldKeys.KeyTypes...),
 				append(change.OldKeys.KeyValues, nils...),
 			)
 		default:
@@ -109,9 +115,10 @@ func addPrefix(strings []string, prefix string) []string {
 	return prefixed
 }
 
-func appendChanges(columns []string, values [][]any, newColumns []string, newValues []any) ([]string, [][]any) {
+func appendChanges(columns []string, types []string, values [][]any, newColumns []string, newTypes []string, newValues []any) ([]string, []string, [][]any) {
 	if columns == nil {
 		columns = newColumns
+		types = newTypes
 		values = make([][]any, 1)
 		values[0] = newValues
 	} else {
@@ -127,10 +134,10 @@ func appendChanges(columns []string, values [][]any, newColumns []string, newVal
 		values = append(values, vals)
 	}
 
-	return columns, values
+	return columns, types, values
 }
 
-func makeValuesLiteral(columns []string, rows [][]any) (valuesLiteral *strings.Builder, values []any) {
+func makeValuesLiteral(columns []string, types []string, rows [][]any) (valuesLiteral *strings.Builder, values []any) {
 	values = make([]any, 0, len(columns)*len(columns[0]))
 	var sb strings.Builder
 	sb.WriteString("(VALUES ")
@@ -146,7 +153,7 @@ func makeValuesLiteral(columns []string, rows [][]any) (valuesLiteral *strings.B
 				sb.WriteByte(',')
 			}
 
-			sb.WriteString(fmt.Sprintf("$%d%s", (i*len(row))+j+1, sqlType(val)))
+			sb.WriteString(fmt.Sprintf("$%d::%s", (i*len(row))+j+1, types[j]))
 			values = append(values, val)
 		}
 
@@ -170,31 +177,34 @@ func makeValuesLiteral(columns []string, rows [][]any) (valuesLiteral *strings.B
 // pgx/pgtype/pgtype.go
 // Once we query it we can cache the result safely in a map or something.
 // It doesn't change.
-func sqlType(value any) string {
+// TODO: Well actually we have a mostly correct implementation of something similar in backfill.go. Look there for inspiration
+func sqlTypeFromGoValue(value any) string {
 	switch value.(type) {
-	case int8, int16, int32, uint8, uint16:
-		return "::int"
+	case int32, uint16:
+		return "int"
 	case int, int64, uint32:
-		return "::bigint"
+		return "int8"
+	case int8, int16, uint8:
+		return "int2"
 	case json.Number, pgtype.Numeric, uint64:
-		return "::numeric"
+		return "numeric"
 	case float32:
-		return "::real"
+		return "real"
 	case float64:
-		return "::double precision"
+		return "double precision"
 	case time.Time:
-		return "::timestamptz"
+		return "timestamptz"
 	case bool:
-		return "::bool"
+		return "bool"
 	case []any:
-		return "::json"
+		return "json"
 	case map[string]any:
-		return "::json"
+		return "json"
 	case netip.Addr:
-		return "::inet"
+		return "inet"
 	case netip.Prefix:
-		return "::cidr"
+		return "cidr"
 	default:
-		return ""
+		return "text" // FIXME: This isn't really ok is it?
 	}
 }
