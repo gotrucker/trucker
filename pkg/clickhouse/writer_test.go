@@ -34,7 +34,7 @@ func TestSetupPositionTracking(t *testing.T) {
 	}
 
 	row = w.conn.QueryRow(context.Background(), "SELECT lsn FROM trucker_current_lsn__test")
-	var lsn int64
+	var lsn uint64
 	row.Scan(&lsn)
 
 	if lsn != 0 {

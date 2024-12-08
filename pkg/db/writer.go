@@ -10,8 +10,8 @@ import (
 
 type Writer interface {
 	SetupPositionTracking()
-	SetCurrentPosition(lsn int64)
-	GetCurrentPosition() int64
+	SetCurrentPosition(lsn uint64)
+	GetCurrentPosition() uint64
 	Write(columns []string, values [][]any)
 	TruncateTable(table string)
 	WithTransaction(f func())

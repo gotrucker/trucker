@@ -25,6 +25,7 @@ type Truck struct {
 	ChangesChan       chan *postgres.Changeset
 	KillChan          chan any
 	DoneChan          chan ExitMsg
+	CurrentPosition   uint64
 }
 
 func NewTruck(cfg config.Truck, rc *postgres.ReplicationClient, connCfgs map[string]config.Connection, doneChan chan ExitMsg) Truck {
@@ -41,16 +42,20 @@ func NewTruck(cfg config.Truck, rc *postgres.ReplicationClient, connCfgs map[str
 	}
 }
 
-func (t *Truck) Backfill(snapshotName string, targetLSN int64) {
+func (t *Truck) Backfill(snapshotName string, targetLSN uint64) {
 	log.Printf("[Truck %s] Running backfill...\n", t.Name)
 	backfillChan := t.ReplicationClient.StreamBackfillData(t.InputTable, snapshotName)
 
 	for {
 		backfillBatch := <-backfillChan
 		if backfillBatch == nil || len(backfillBatch.Rows) == 0 {
-			if t.Writer.GetCurrentPosition() == 0 {
+			curPos := t.Writer.GetCurrentPosition()
+			if curPos == 0 {
 				t.Writer.SetupPositionTracking()
 				t.Writer.SetCurrentPosition(targetLSN)
+				t.CurrentPosition = targetLSN
+			} else {
+				t.CurrentPosition = curPos
 			}
 
 			log.Printf("[Truck %s] Backfill complete!\n", t.Name)

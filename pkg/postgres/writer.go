@@ -47,7 +47,7 @@ func (w *Writer) SetupPositionTracking() {
 	}
 }
 
-func (w *Writer) SetCurrentPosition(lsn int64) {
+func (w *Writer) SetCurrentPosition(lsn uint64) {
 	sql := fmt.Sprintf(`INSERT INTO %s (lsn) VALUES ($1)
 ON CONFLICT (id) DO UPDATE SET lsn = $1`, w.currentLsnTable)
 	_, err := w.conn.Exec(context.Background(), sql, lsn)
@@ -57,8 +57,8 @@ ON CONFLICT (id) DO UPDATE SET lsn = $1`, w.currentLsnTable)
 	}
 }
 
-func (w *Writer) GetCurrentPosition() int64 {
-	var lsn int64
+func (w *Writer) GetCurrentPosition() uint64 {
+	var lsn uint64
 	sql := fmt.Sprintf("SELECT lsn FROM %s", w.currentLsnTable)
 	row := w.conn.QueryRow(context.Background(), sql)
 	row.Scan(&lsn)

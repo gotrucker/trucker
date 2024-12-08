@@ -36,7 +36,7 @@ func NewReplicationClient(tables []string, connCfg config.Connection) *Replicati
 	}
 }
 
-func (rc *ReplicationClient) Setup() ([]string, int64, string) {
+func (rc *ReplicationClient) Setup() ([]string, uint64, string) {
 	rc.conn = rc.connect(false)
 	rc.streamConn = rc.connect(true)
 	// we need to keep the connection open so that the other connection can use
@@ -48,10 +48,10 @@ func (rc *ReplicationClient) Setup() ([]string, int64, string) {
 
 	log.Println("Current LSN:", currentLSN, "Backfill LSN:", backfillLSN, "Snapshot name:", snapshotName)
 
-	return newTables, int64(backfillLSN), snapshotName
+	return newTables, uint64(backfillLSN), snapshotName
 }
 
-func (rc *ReplicationClient) Start(startPosition int64, endPosition int64) chan map[string]*Changeset {
+func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) chan map[string]*Changeset {
 	if rc.running {
 		log.Fatalln("Replication is already running")
 	}
@@ -84,9 +84,6 @@ func (rc *ReplicationClient) Start(startPosition int64, endPosition int64) chan 
 		clientXLogPos := startLSN
 		standbyMessageTimeout := time.Second * 10
 		nextStandbyMessageDeadline := time.Now().Add(standbyMessageTimeout)
-		// relations := map[uint32]*pglogrepl.RelationMessage{}
-		// relationsV2 := map[uint32]*pglogrepl.RelationMessageV2{}
-		// typeMap := pgtype.NewMap()
 
 		fmt.Printf("Starting loop! %v\n", rc.running)
 

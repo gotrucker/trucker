@@ -95,8 +95,8 @@ func doTheThing(projectPath string) (chan truck.ExitMsg, []config.Truck, map[str
 	return doneChan, truckCfgs, trucksByInputConnection
 }
 
-func backfill(replicationClients map[string]*postgres.ReplicationClient, trucks map[string][]*truck.Truck) (map[string][]string, map[string]int64) {
-	backfillLSNs := make(map[string]int64)
+func backfill(replicationClients map[string]*postgres.ReplicationClient, trucks map[string][]*truck.Truck) (map[string][]string, map[string]uint64) {
+	backfillLSNs := make(map[string]uint64)
 	backfilledTables := make(map[string][]string)
 
 	for connName, rc := range replicationClients {
@@ -118,9 +118,9 @@ func backfill(replicationClients map[string]*postgres.ReplicationClient, trucks 
 	return backfilledTables, backfillLSNs
 }
 
-func catchup(replicationClients map[string]*postgres.ReplicationClient, trucks map[string][]*truck.Truck, skipTables map[string][]string, backfillLSNs map[string]int64) {
+func catchup(replicationClients map[string]*postgres.ReplicationClient, trucks map[string][]*truck.Truck, skipTables map[string][]string, backfillLSNs map[string]uint64) {
 	for connName, rc := range replicationClients {
-		var startLSN int64
+		var startLSN uint64
 		endLSN := backfillLSNs[connName]
 
 		for _, truck := range trucks[connName] {
@@ -174,7 +174,7 @@ func streamIt(trucksByInputConnection map[string][]*truck.Truck) {
 	}
 
 	for rc, trucks := range trucksByRc {
-		var startLSN int64
+		var startLSN uint64
 
 		for _, t := range trucks {
 			truckLSN := t.Writer.GetCurrentPosition()

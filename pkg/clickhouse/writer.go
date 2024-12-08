@@ -37,23 +37,23 @@ func (w *Writer) SetupPositionTracking() {
 	w.SetCurrentPosition(0)
 }
 
-func (w *Writer) SetCurrentPosition(lsn int64) {
+func (w *Writer) SetCurrentPosition(lsn uint64) {
 	if err := w.conn.Exec(
 		context.Background(),
-		fmt.Sprintf("CREATE OR REPLACE VIEW %s AS SELECT $1::Int64 AS lsn", w.currentLsnTable),
+		fmt.Sprintf("CREATE OR REPLACE VIEW %s AS SELECT $1::UInt64 AS lsn", w.currentLsnTable),
 		lsn,
 	); err != nil {
 		panic(err)
 	}
 }
 
-func (w *Writer) GetCurrentPosition() int64 {
+func (w *Writer) GetCurrentPosition() uint64 {
 	row := w.conn.QueryRow(
 		context.Background(),
 		fmt.Sprintf("SELECT lsn FROM %s", w.currentLsnTable),
 	)
 
-	var lsn int64
+	var lsn uint64
 	if err := row.Scan(&lsn); err != nil {
 		return 0
 	}
