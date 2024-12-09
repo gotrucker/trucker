@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"text/template"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/tonyfg/trucker/pkg/config"
 )
@@ -14,7 +14,7 @@ import (
 type Writer struct {
 	currentLsnTable string
 	queryTemplate   *template.Template
-	conn            *pgx.Conn
+	conn            *pgxpool.Pool
 }
 
 func NewWriter(inputConnectionName string, writeQuery string, cfg config.Connection) *Writer {
@@ -111,5 +111,5 @@ func (w *Writer) WithTransaction(f func()) {
 }
 
 func (w *Writer) Close() {
-	w.conn.Close(context.Background())
+	w.conn.Close()
 }

@@ -6,13 +6,13 @@ import (
 	"log"
 	"net/url"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 const defaultSliceCapacity = 32
 const minimumPoolSize = 2
 
-func NewConnection(user string, pass string, host string, port uint16, database string, replication bool) *pgx.Conn {
+func NewConnection(user string, pass string, host string, port uint16, database string, replication bool) *pgxpool.Pool {
 	if port == 0 {
 		port = 5432
 	}
@@ -31,12 +31,12 @@ func NewConnection(user string, pass string, host string, port uint16, database 
 		url.QueryEscape(database),
 		replicationParam)
 
-	config, err := pgx.ParseConfig(connString)
+	config, err := pgxpool.ParseConfig(connString)
 	if err != nil {
 		log.Fatalln("Unable to parse connection string:", err)
 	}
 
-	conn, err := pgx.ConnectConfig(context.Background(), config)
+	conn, err := pgxpool.NewWithConfig(context.Background(), config)
 	if err != nil {
 		log.Fatalln("Unable to connect to postgres server:", err)
 	}

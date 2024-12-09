@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/url"
 	"strings"
 	"time"
 
@@ -37,7 +38,7 @@ func NewReplicationClient(tables []string, connCfg config.Connection) *Replicati
 }
 
 func (rc *ReplicationClient) Setup() ([]string, uint64, string) {
-	rc.conn = rc.connect(false)
+	rc.conn = rc.connect(false) // TODO: check that this connection gets closed once we no longer need it
 	rc.streamConn = rc.connect(true)
 	// we need to keep the connection open so that the other connection can use
 	// the repliaction slot snapshot for backfills
@@ -365,14 +366,36 @@ func (rc *ReplicationClient) ResetStreamConn() {
 }
 
 func (rc *ReplicationClient) connect(replication bool) *pgx.Conn {
-	return NewConnection(
-		rc.connCfg.User,
-		rc.connCfg.Pass,
-		rc.connCfg.Host,
-		rc.connCfg.Port,
-		rc.connCfg.Database,
-		replication,
-	)
+	port := rc.connCfg.Port
+	if port == 0 {
+		port = 5432
+	}
+
+	replicationParam := ""
+	if replication {
+		replicationParam = "?replication=database"
+	}
+
+	connString := fmt.Sprintf(
+		"postgres://%s:%s@%s:%d/%s%s",
+		url.QueryEscape(rc.connCfg.User),
+		url.QueryEscape(rc.connCfg.Pass),
+		url.QueryEscape(rc.connCfg.Host),
+		port,
+		url.QueryEscape(rc.connCfg.Database),
+		replicationParam)
+
+	config, err := pgx.ParseConfig(connString)
+	if err != nil {
+		log.Fatalln("Unable to parse connection string:", err)
+	}
+
+	conn, err := pgx.ConnectConfig(context.Background(), config)
+	if err != nil {
+		log.Fatalln("Unable to connect to postgres server:", err)
+	}
+
+	return conn
 }
 
 func (rc *ReplicationClient) query(sql string, values ...any) pgx.Rows {

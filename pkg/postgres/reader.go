@@ -5,14 +5,14 @@ import (
 	"context"
 	"text/template"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/tonyfg/trucker/pkg/config"
 )
 
 type Reader struct {
 	queryTemplate *template.Template
-	conn          *pgx.Conn
+	conn          *pgxpool.Pool
 }
 
 func NewReader(readQuery string, cfg config.Connection) *Reader {
@@ -72,5 +72,5 @@ func (r *Reader) Read(operation string, columns []string, types []string, rowVal
 }
 
 func (r *Reader) Close() {
-	r.conn.Close(context.Background())
+	r.conn.Close()
 }

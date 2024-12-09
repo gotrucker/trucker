@@ -74,11 +74,12 @@ func (t *Truck) Backfill(snapshotName string, targetLSN uint64) {
 
 func (t *Truck) Start() {
 	log.Printf("[Truck %s] Starting to read from replication stream...\n", t.Name)
-	defer func() {
-		t.DoneChan <- ExitMsg{t.Name, "Exited!"}
-	}()
 
 	go func() {
+		defer func() {
+			t.DoneChan <- ExitMsg{t.Name, "Exited!"}
+		}()
+
 		for {
 			select {
 			case <-t.KillChan:
