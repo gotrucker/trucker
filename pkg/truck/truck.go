@@ -65,7 +65,7 @@ func (t *Truck) Backfill(snapshotName string, targetLSN uint64) {
 		cols, rows := t.Reader.Read("insert", backfillBatch.Columns, backfillBatch.Types, backfillBatch.Rows)
 		log.Printf("Backfilling %d rows...\n", len(rows))
 		if len(rows) > 0 {
-			t.Writer.Write(cols, rows)
+			t.Writer.Write("insert", cols, rows)
 		} else {
 			log.Printf("Empty row batch after read query... Skipping\n")
 		}
@@ -97,9 +97,9 @@ func (t *Truck) Start() {
 					deleteCols, deleteVals := t.Reader.Read("delete", changeset.DeleteColumns, changeset.DeleteTypes, changeset.DeleteValues)
 
 					t.Writer.WithTransaction(func() {
-						t.Writer.Write(insertCols, insertVals)
-						t.Writer.Write(updateCols, updateVals)
-						t.Writer.Write(deleteCols, deleteVals)
+						t.Writer.Write("insert", insertCols, insertVals)
+						t.Writer.Write("update", updateCols, updateVals)
+						t.Writer.Write("delete", deleteCols, deleteVals)
 					})
 				}
 			}

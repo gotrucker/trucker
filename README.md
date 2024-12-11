@@ -15,6 +15,7 @@ postgres db)
 - Materialize
 - Feldera
 - Striim
+- https://github.com/electric-sql/electric
 - Check this out for more ideas: https://github.com/DataExpert-io/data-engineer-handbook
 
 # How to define a data pipeline

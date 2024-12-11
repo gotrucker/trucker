@@ -12,7 +12,7 @@ type Writer interface {
 	SetupPositionTracking()
 	SetCurrentPosition(lsn uint64)
 	GetCurrentPosition() uint64
-	Write(columns []string, values [][]any)
+	Write(operation string, columns []string, values [][]any)
 	TruncateTable(table string)
 	WithTransaction(f func())
 	Close()

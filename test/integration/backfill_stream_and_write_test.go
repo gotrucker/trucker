@@ -60,7 +60,7 @@ FROM {{ .rows }}`,
 		}
 
 		cols, rows := r.Read("insert", backfillBatch.Columns, backfillBatch.Types, backfillBatch.Rows)
-		w.WithTransaction(func() { w.Write(cols, rows) })
+		w.WithTransaction(func() { w.Write("insert", cols, rows) })
 	}
 
 	expectedColumns := []string{"id", "name", "age", "type", "country"}
@@ -100,7 +100,7 @@ got %T %v`, expectedRows, expectedRows, rows, rows)
 		}
 
 		columns, values := r.Read("insert", changeset.InsertColumns, changeset.InsertTypes, changeset.InsertValues)
-		w.WithTransaction(func() { w.Write(columns, values) })
+		w.WithTransaction(func() { w.Write("insert", columns, values) })
 	case <-time.After(3 * time.Second):
 		t.Error("Reading from channel took too long...")
 	}

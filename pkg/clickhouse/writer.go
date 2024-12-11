@@ -61,14 +61,17 @@ func (w *Writer) GetCurrentPosition() uint64 {
 	return lsn
 }
 
-func (w *Writer) Write(columns []string, values [][]any) {
+func (w *Writer) Write(operation string, columns []string, values [][]any) {
 	if len(columns) == 0 || len(values) == 0 {
 		return
 	}
 
 	valuesLiteral, flatValues := makeValuesLiteral(columns, values)
 
-	tmplVars := map[string]string{"rows": valuesLiteral.String()}
+	tmplVars := map[string]string{
+		"operation": operation,
+		"rows": valuesLiteral.String(),
+	}
 	sql := new(bytes.Buffer)
 	err := w.queryTemplate.Execute(sql, tmplVars)
 	if err != nil {

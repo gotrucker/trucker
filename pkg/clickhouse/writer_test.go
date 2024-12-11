@@ -72,6 +72,7 @@ func TestWrite(t *testing.T) {
 	w.SetupPositionTracking()
 
 	w.Write(
+		"insert",
 		[]string{"id", "name", "age", "type", "country"},
 		[][]any{{1, "Green Spot", 10, "Single Pot Still", "Ireland"}},
 	)
