@@ -2,6 +2,8 @@ package clickhouse
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/tonyfg/trucker/test/helpers"
@@ -76,9 +78,10 @@ func TestWrite(t *testing.T) {
 		[]string{"id", "name", "age", "type", "country"},
 		[][]any{{1, "Green Spot", 10, "Single Pot Still", "Ireland"}},
 	)
+
 	row := w.conn.QueryRow(
 		context.Background(),
-		"SELECT id, name, age, type, country FROM whiskies_flat WHERE name = 'Green Spot'")
+		"SELECT id, name, age, type, country FROM trucker.v_whiskies_flat WHERE name = 'Green Spot'")
 	var id, age int32
 	var name, whiskyType, country string
 	row.Scan(&id, &name, &age, &whiskyType, &country)
@@ -91,8 +94,8 @@ func TestWrite(t *testing.T) {
 		t.Error("Expected name = 'Green Spot', got", name)
 	}
 
-	if age != 10 {
-		t.Error("Expected age = 10, got", age)
+	if age != 20 {
+		t.Error("Expected age = 20, got", age)
 	}
 
 	if whiskyType != "Single Pot Still" {
@@ -107,9 +110,15 @@ func TestWrite(t *testing.T) {
 func writerTestSetup() *Writer {
 	helpers.PrepareClickhouseTestDb().Close()
 
+	path := filepath.Join(helpers.Basepath, "../fixtures/fake_project/postgres_to_clickhouse/output.sql")
+	sqlTemplate, err := os.ReadFile(path)
+	if err != nil {
+		panic(err)
+	}
+
 	return NewWriter(
 		"test",
-		"INSERT INTO whiskies_flat (id, name, age, type, country) SELECT id, name, age, type, country FROM {{.rows}}",
+		string(sqlTemplate),
 		helpers.ClickhouseCfg,
 	)
 }

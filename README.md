@@ -84,6 +84,7 @@ https://pkg.go.dev/go.uber.org/zap
 ?
 
 # Wishes for the future
+- When people use old__*, check if postgres tables are set to REPLICA IDENTITY FULL (or equivalent for other DBs). Show a decent error msg and exit if it's not
 - Use iterators instead of creating arrays from scratch for everything
 - Integrate DuckDB as a library to allow having lots more input / output sources
 - Large tests with TPC-DS dataset and some gnarly scenarios

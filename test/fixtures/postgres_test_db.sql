@@ -24,9 +24,9 @@ CREATE TABLE public.whiskies (
 CREATE TABLE public.whiskies_flat (
   id int PRIMARY KEY,
   name text NOT NULL,
-  age int NOT NULL,
-  type text NOT NULL,
-  country text NOT NULL
+  age int,
+  type text,
+  country text
 );
 
 CREATE TABLE public.weird_types (
@@ -41,7 +41,7 @@ CREATE TABLE public.weird_types (
 
 ALTER TABLE public.countries REPLICA IDENTITY FULL;
 ALTER TABLE public.whisky_types REPLICA IDENTITY FULL;
-ALTER TABLE public.whisky_types REPLICA IDENTITY FULL;
+ALTER TABLE public.whiskies REPLICA IDENTITY FULL;
 
 INSERT INTO public.countries (name)
 VALUES ('Portugal'), ('Scotland'), ('Ireland'), ('Japan'), ('USA');

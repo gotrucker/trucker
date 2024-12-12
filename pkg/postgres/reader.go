@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	// "log"
 	"bytes"
 	"context"
 	"text/template"

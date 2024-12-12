@@ -49,68 +49,77 @@ func makeValuesLiteral(columns []string, rows [][]any) (valuesLiteral *strings.B
 }
 
 // TODO: I'm not sure this is a cheat in clickhouse... Is there a way to query all the types?
+// FIXME: This also doesn't wokr when we have nil values... We really need to transport the actual values from the origin DB so we can properly convert NULLs with the correct type
 func sqlType(value any) string {
+	var theType string
+
 	switch value.(type) {
 	case int8:
-		return "Int8"
+		theType = "Int8"
 	case int16:
-		return "Int16"
+		theType = "Int16"
 	case int32:
-		return "Int32"
+		theType = "Int32"
 	case int, int64:
-		return "Int64"
+		theType = "Int64"
 	case uint8:
-		return "UInt8"
+		theType = "UInt8"
 	case uint16:
-		return "UInt16"
+		theType = "UInt16"
 	case uint32:
-		return "UInt32"
+		theType = "UInt32"
 	case uint, uint64:
-		return "UInt64"
+		theType = "UInt64"
 	case json.Number, pgtype.Numeric:
-		return "Decimal"
+		theType = "Decimal"
 	case float32:
-		return "Float32"
+		theType = "Float32"
 	case float64:
-		return "Float64"
+		theType = "Float64"
 	case time.Time:
-		return "DateTime64"
+		theType = "DateTime64"
 	case bool:
-		return "Boolean"
+		theType = "Boolean"
 	case []string:
-		return "Array(String)"
+		theType = "Array(String)"
 	case []int8:
-		return "Array(Int8)"
+		theType = "Array(Int8)"
 	case []int16:
-		return "Array(Int16)"
+		theType = "Array(Int16)"
 	case []int32:
-		return "Array(Int32)"
+		theType = "Array(Int32)"
 	case []int, []int64:
-		return "Array(Int64)"
+		theType = "Array(Int64)"
 	case []uint8:
-		return "Array(UInt8)"
+		theType = "Array(UInt8)"
 	case []uint16:
-		return "Array(UInt16)"
+		theType = "Array(UInt16)"
 	case []uint32:
-		return "Array(UInt32)"
+		theType = "Array(UInt32)"
 	case []uint, []uint64:
-		return "Array(UInt64)"
+		theType = "Array(UInt64)"
 	case []json.Number, []pgtype.Numeric:
-		return "Array(Decimal)"
+		theType = "Array(Decimal)"
 	case []float32:
-		return "Array(Float32)"
+		theType = "Array(Float32)"
 	case []float64:
-		return "Array(Float64)"
+		theType = "Array(Float64)"
 	case []time.Time:
-		return "Array(DateTime64)"
+		theType = "Array(DateTime64)"
 	case []bool:
-		return "Array(Boolean)"
+		theType = "Array(Boolean)"
 	// FIXME: Clickhouse JSON support is experimental. How do we deal with these?
 	// case []any:
-	// 	return "json"
+	// 	theType = "json"
 	// case map[string]any:
-	// 	return "json"
+	// 	theType = "json"
 	default:
-		return "String"
+		theType = "String"
 	}
+
+	if value == nil {
+		theType = "Nullable(" + theType + ")"
+	}
+
+	return theType
 }

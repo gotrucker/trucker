@@ -7,14 +7,14 @@ import (
 func TestLoadConfig(t *testing.T) {
 	config := Load("../../test/fixtures/fake_project/trucker.yml")
 
-	if len(config.Connections) != 2 {
-		t.Error("Expected 2 connections, got", len(config.Connections))
+	if len(config.Connections) != 3 {
+		t.Error("Expected 3 connections, got", len(config.Connections))
 	}
 
-	conn := config.Connections["pgconn"]
+	conn := config.Connections["pg_input_conn"]
 
-	if conn.Name != "pgconn" {
-		t.Error("Expected connection name = pgconn, got", conn.Name)
+	if conn.Name != "pg_input_conn" {
+		t.Error("Expected connection name = pg_input_conn, got", conn.Name)
 	}
 
 	if conn.Adapter != "postgres" {

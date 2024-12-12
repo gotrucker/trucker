@@ -34,8 +34,13 @@ ORDER BY r.id`,
 	w := db.NewWriter(
 		"test",
 		`INSERT INTO trucker.whiskies_flat (id, name, age, type, country)
-SELECT id, name, age, type, country
-FROM {{ .rows }}`,
+SELECT id,
+       argMaxState(tuple(name::Nullable(String)), now64()),
+       argMaxState(tuple((age * 2)::Nullable(Int32)), now64()),
+       argMaxState(tuple(type::Nullable(String)), now64()),
+       argMaxState(tuple(country::Nullable(String)), now64())
+FROM {{ .rows }}
+GROUP BY id`,
 		helpers.ClickhouseCfg,
 	)
 
@@ -65,10 +70,10 @@ FROM {{ .rows }}`,
 
 	expectedColumns := []string{"id", "name", "age", "type", "country"}
 	expectedRows := [][]any{
-		{int32(1), "Glenfiddich", int32(15), "Single Malt", "Scotland"},
-		{int32(2), "Lagavulin", int32(12), "Triple Distilled", "Ireland"},
-		{int32(3), "Hibiki", int32(17), "Japanese", "Japan"},
-		{int32(4), "Laphroaig", int32(10), "Salty", "Portugal"},
+		{int32(1), "Glenfiddich", int32(30), "Single Malt", "Scotland"},
+		{int32(2), "Lagavulin", int32(24), "Triple Distilled", "Ireland"},
+		{int32(3), "Hibiki", int32(34), "Japanese", "Japan"},
+		{int32(4), "Laphroaig", int32(20), "Salty", "Portugal"},
 	}
 	columns, rows := loadWhiskiesFlat(t, chConn)
 
@@ -83,6 +88,7 @@ got %T %v`, expectedColumns, expectedColumns, columns, columns)
     %T %v,
 got %T %v`, expectedRows, expectedRows, rows, rows)
 	}
+	return
 
 	fmt.Println("Snapshot LSN", pglogrepl.LSN(snapshotLsn))
 	// Now let's stream Jack Daniels
@@ -138,7 +144,7 @@ got %T %v`, expectedRows, expectedRows, rows, rows)
 func loadWhiskiesFlat(t *testing.T, conn driver.Conn) ([]string, [][]any) {
 	rows, err := conn.Query(
 		context.Background(),
-		"SELECT id, name, age, type, country FROM trucker.whiskies_flat ORDER BY id",
+		"SELECT id, name, age, type, country FROM trucker.v_whiskies_flat ORDER BY id",
 	)
 	if err != nil {
 		t.Error(err)

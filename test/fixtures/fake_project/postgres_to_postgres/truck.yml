@@ -1,0 +1,6 @@
+input:
+  connection: pg_input_conn
+  table: public.whiskies
+output:
+  connection: pg_input_conn # FIXME: fdx isto tem que ir para o output
+  table: public.whiskies_flat

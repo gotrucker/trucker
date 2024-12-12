@@ -1,5 +1,5 @@
 input:
-  connection: pgconn
+  connection: pg_input_conn
   table: public.whiskies
 output:
   connection: chconn
