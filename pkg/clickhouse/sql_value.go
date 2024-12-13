@@ -43,7 +43,7 @@ func makeValuesLiteral(columns []string, rows [][]any) (valuesLiteral *strings.B
 
 		sb.WriteByte(')')
 	}
-	sb.WriteByte(')')
+	sb.WriteString(") r")
 
 	return &sb, values
 }
