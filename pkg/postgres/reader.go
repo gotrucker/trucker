@@ -1,9 +1,9 @@
 package postgres
 
 import (
-	// "log"
 	"bytes"
 	"context"
+	"log"
 	"text/template"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -43,14 +43,14 @@ func (r *Reader) Read(operation string, columns []string, types []string, rowVal
 	sql := new(bytes.Buffer)
 	err := r.queryTemplate.Execute(sql, tmplVars)
 
-	// log.Printf("[Postgres Reader] Running query:\n%s\n", sql.String())
-	// log.Printf("[Postgres Reader] Query values:\n%v\n", values)
 	rows, err := r.conn.Query(
 		context.Background(),
 		sql.String(),
 		values...,
 	)
 	if err != nil {
+		log.Printf("[Postgres Reader] Error running query:\n%s\n", sql.String())
+		log.Printf("[Postgres Reader] Query values:\n%v\n", values)
 		panic(err)
 	}
 	defer rows.Close()

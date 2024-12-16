@@ -4,7 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	// "log"
+	"log"
+	"strconv"
 	"text/template"
 
     "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
@@ -16,6 +17,7 @@ type Writer struct {
 	currentLsnTable string
 	queryTemplate   *template.Template
 	conn            driver.Conn
+	maxQuerySize    uint64
 }
 
 func NewWriter(inputConnectionName string, writeQuery string, cfg config.Connection) *Writer {
@@ -78,10 +80,33 @@ func (w *Writer) Write(operation string, columns []string, values [][]any) {
 		panic(err)
 	}
 
-	// log.Printf("[Clickhouse Writer] Executing SQL:\n%s", sql.String())
-	// log.Printf("[Clickhouse Writer] Values:\n%v", flatValues)
-	err = w.conn.Exec(context.Background(), sql.String(), flatValues...)
+	var valuesLen uint64
+	for _, arr := range values {
+		for _, v := range arr {
+			valuesLen += uint64(len(fmt.Sprintf("%v", v)))
+		}
+	}
+
+	sqlStr := sql.String()
+	maxQuerySize := w.getMaxQuerySize()
+	if valuesLen + uint64(len(sqlStr)) > maxQuerySize {
+		log.Printf(
+			"[Clickhouse Writer] Query size bigger than Clickhouse max_query_size (%d > %d). Splitting into 2...",
+			valuesLen + uint64(len(sqlStr)),
+			maxQuerySize,
+		)
+
+		half := len(values) / 2
+		w.Write(operation, columns, values[:half])
+		w.Write(operation, columns, values[half:])
+		return
+	}
+
+	err = w.conn.Exec(context.Background(), sqlStr, flatValues...)
 	if err != nil {
+		log.Printf("[Clickhouse Writer] Error executing SQL:\n%s", sqlStr)
+		log.Printf("[Clickhouse Writer] Values:\n%v", flatValues)
+		log.Println("[Clickhouse Writer] SQL length / Values length: ", uint64(len(sqlStr)), " / ", valuesLen)
 		panic(err)
 	}
 }
@@ -99,4 +124,28 @@ func (w *Writer) WithTransaction(f func()) {
 
 func (w *Writer) Close() {
 	w.conn.Close()
+}
+
+func (w *Writer) getMaxQuerySize() uint64 {
+	if w.maxQuerySize == 0 {
+		row := w.conn.QueryRow(
+			context.Background(),
+			`SELECT value
+FROM system.settings
+WHERE name = 'max_query_size'`,
+		)
+
+
+		var strVal string
+		if err := row.Scan(&strVal); err != nil {
+			panic(err)
+		}
+		n, err := strconv.ParseInt(strVal, 10, 64)
+		if err != nil {
+			panic(err)
+		}
+		w.maxQuerySize = uint64(n)
+	}
+
+	return w.maxQuerySize
 }
