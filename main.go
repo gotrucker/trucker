@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"time"
 	"slices"
 	"syscall"
 
@@ -28,6 +29,7 @@ import (
 func main() {
 	sigChan := trapSignals()
 	projectPath := projectPathFromArgsOrCwd()
+	time.Sleep(10 * time.Second)
 	doneChan, truckCfgs, trucksByInputConnection := doTheThing(projectPath)
 
 	if len(truckCfgs) > 0 {

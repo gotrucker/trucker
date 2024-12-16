@@ -3,6 +3,7 @@ package truck
 import (
 	// "fmt"
 	"log"
+	"time"
 
 	"github.com/tonyfg/trucker/pkg/config"
 	"github.com/tonyfg/trucker/pkg/db"
@@ -43,6 +44,7 @@ func NewTruck(cfg config.Truck, rc *postgres.ReplicationClient, connCfgs map[str
 }
 
 func (t *Truck) Backfill(snapshotName string, targetLSN uint64) {
+	start := time.Now()
 	log.Printf("[Truck %s] Running backfill...\n", t.Name)
 	backfillChan := t.ReplicationClient.StreamBackfillData(t.InputTable, snapshotName)
 
@@ -58,7 +60,7 @@ func (t *Truck) Backfill(snapshotName string, targetLSN uint64) {
 				t.CurrentPosition = curPos
 			}
 
-			log.Printf("[Truck %s] Backfill complete!\n", t.Name)
+			log.Printf("[Truck %s] Backfill complete in %f seconds!\n", t.Name, time.Since(start).Seconds())
 			break
 		}
 
