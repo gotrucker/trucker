@@ -41,16 +41,27 @@ func TestReadTypes(t *testing.T) {
 	r := readerTestSetup(`SELECT * FROM {{ .rows }}`)
 	defer r.Close()
 
+	var types []string
+	row := r.conn.QueryRow(
+		context.Background(),
+		`SELECT array_agg(data_type)
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name = 'weird_types'`,
+	)
+	err := row.Scan(&types)
+	if err != nil {
+		panic(err)
+	}
+
 	rows, err := r.conn.Query(context.Background(), "SELECT * FROM weird_types")
 	if err != nil {
 		t.Fatalf("Query failed: %v\n", err)
 	}
 
 	columns := make([]string, len(rows.FieldDescriptions()))
-	types := make([]string, len(rows.FieldDescriptions()))
 	for i, field := range rows.FieldDescriptions() {
 		columns[i] = field.Name
-		types[i] = sqlTypeFromOID(field.DataTypeOID)
 	}
 
 	rowValues := make([][]any, 0, 1)

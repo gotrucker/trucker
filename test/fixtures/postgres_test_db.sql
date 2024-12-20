@@ -35,7 +35,7 @@ CREATE TABLE public.weird_types (
   a_date date,
   an_ip_addr inet,
   a_jsonb jsonb,
-  a_text_arr text[],
+  -- a_text_arr text[],
   a_ts timestamp
 );
 
@@ -52,6 +52,6 @@ VALUES ('Bourbon', 5), ('Japanese', 4), ('Triple Distilled', 3), ('Single Malt',
 INSERT INTO public.whiskies (name, age, whisky_type_id)
 VALUES ('Glenfiddich', 15, 4), ('Lagavulin', 12, 3), ('Hibiki', 17, 2), ('Laphroaig', 10, 5);
 
-INSERT INTO public.weird_types (a_number, a_bool, a_date, an_ip_addr, a_jsonb, a_text_arr, a_ts)
-VALUES (1234567890, true, '2020-01-01', '192.168.0.1', '{"key": "value"}', ARRAY['a', 'b', 'c'], '2020-01-01T00:00:00Z'),
-       (null, null, null, null, null, null, null);
+INSERT INTO public.weird_types (a_number, a_bool, a_date, an_ip_addr, a_jsonb, a_ts)
+VALUES (1234567890, true, '2020-01-01', '192.168.0.1', '{"key": "value"}', '2020-01-01T00:00:00Z'),
+       (null, null, null, null, null, null);

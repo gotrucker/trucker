@@ -18,6 +18,7 @@ type ExitMsg struct {
 type Truck struct {
 	Name              string
 	ReplicationClient *postgres.ReplicationClient
+	readQuery         string
 	Reader            db.Reader
 	InputTable        string
 	Writer            db.Writer
@@ -33,6 +34,7 @@ func NewTruck(cfg config.Truck, rc *postgres.ReplicationClient, connCfgs map[str
 	return Truck{
 		Name:              cfg.Name,
 		ReplicationClient: rc,
+		readQuery:         cfg.Input.Sql,
 		Reader:            db.NewReader(cfg.Input.Sql, connCfgs[cfg.Input.Connection]),
 		InputTable:        cfg.Input.Table,
 		Writer:            db.NewWriter(cfg.Input.Connection, cfg.Output.Sql, connCfgs[cfg.Output.Connection]),
@@ -46,11 +48,13 @@ func NewTruck(cfg config.Truck, rc *postgres.ReplicationClient, connCfgs map[str
 func (t *Truck) Backfill(snapshotName string, targetLSN uint64) {
 	start := time.Now()
 	log.Printf("[Truck %s] Running backfill...\n", t.Name)
-	backfillChan := t.ReplicationClient.StreamBackfillData(t.InputTable, snapshotName)
+	colsChan, rowsChan := t.ReplicationClient.StreamBackfillData(t.InputTable, snapshotName, t.readQuery)
+
+	cols := <-colsChan
 
 	for {
-		backfillBatch := <-backfillChan
-		if backfillBatch == nil || len(backfillBatch.Rows) == 0 {
+		rows := <-rowsChan
+		if rows == nil || len(rows) == 0 {
 			curPos := t.Writer.GetCurrentPosition()
 			if curPos == 0 {
 				t.Writer.SetupPositionTracking()
@@ -64,7 +68,6 @@ func (t *Truck) Backfill(snapshotName string, targetLSN uint64) {
 			break
 		}
 
-		cols, rows := t.Reader.Read("insert", backfillBatch.Columns, backfillBatch.Types, backfillBatch.Rows)
 		log.Printf("Backfilling %d rows...\n", len(rows))
 		if len(rows) > 0 {
 			t.Writer.Write("insert", cols, rows)

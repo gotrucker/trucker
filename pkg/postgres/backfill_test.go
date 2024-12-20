@@ -23,14 +23,16 @@ func TestStreamBackfillData(t *testing.T) {
 		t.Error(err)
 	}
 
-	changesChan := rc.StreamBackfillData("public.countries", snapshotName)
-	select {
-	case res := <-changesChan:
-		expectedInsertCols := []string{"id", "name", "old__id", "old__name"}
-		if !reflect.DeepEqual(res.Columns, expectedInsertCols) {
-			t.Errorf("Expected InsertCols to be %v but got %v", expectedInsertCols, res.Columns)
-		}
+	colChan, rowChan := rc.StreamBackfillData("public.countries", snapshotName, "SELECT * FROM {{ .rows }}")
+	cols := <-colChan
 
+	expectedInsertCols := []string{"id", "name", "old__id", "old__name"}
+	if !reflect.DeepEqual(cols, expectedInsertCols) {
+		t.Errorf("Expected InsertCols to be %v but got %v", expectedInsertCols, cols)
+	}
+
+	select {
+	case rows := <-rowChan:
 		expectedValues := [][]any{
 			{int32(1), "Portugal", nil, nil},
 			{int32(2), "Scotland", nil, nil},
@@ -38,17 +40,17 @@ func TestStreamBackfillData(t *testing.T) {
 			{int32(4), "Japan", nil, nil},
 			{int32(5), "USA", nil, nil},
 		}
-		if !reflect.DeepEqual(res.Rows, expectedValues) {
-			t.Errorf("Expected Values to be %v but got %v", expectedValues, res.Rows)
+		if !reflect.DeepEqual(rows, expectedValues) {
+			t.Errorf("Expected Values to be %v but got %v", expectedValues, rows)
 		}
 	case <-time.After(100 * time.Millisecond):
 		t.Error("Reading from channel took too long...")
 	}
 
 	select {
-	case res := <-changesChan:
-		if res != nil {
-			t.Error("Expected the channel to be closed, but got", res)
+	case rows := <-rowChan:
+		if rows != nil {
+			t.Error("Expected the channel to be closed, but got", rows)
 		}
 	case <-time.After(100 * time.Millisecond):
 		t.Error("Reading from channel took too long...")

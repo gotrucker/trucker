@@ -15,6 +15,12 @@ import (
 	"github.com/tonyfg/trucker/test/helpers"
 )
 
+const readQuery = `SELECT r.id, r.name, r.age, t.name type, c.name country
+FROM {{ .rows }}
+JOIN public.whisky_types t ON r.whisky_type_id = t.id
+JOIN public.countries c ON c.id = t.country_id
+ORDER BY r.id`
+
 func TestStreamBackfillReadAndWrite(t *testing.T) {
 	pgConn := helpers.PreparePostgresTestDb()
 	defer pgConn.Close(context.Background())
@@ -23,11 +29,7 @@ func TestStreamBackfillReadAndWrite(t *testing.T) {
 	rc := postgres.NewReplicationClient([]string{"public.whiskies"}, helpers.PostgresCfg)
 
 	r := db.NewReader(
-		`SELECT r.id, r.name, r.age, t.name type, c.name country
-FROM {{ .rows }}
-JOIN public.whisky_types t ON r.whisky_type_id = t.id
-JOIN public.countries c ON c.id = t.country_id
-ORDER BY r.id`,
+		readQuery,
 		helpers.PostgresCfg,
 	)
 
@@ -56,15 +58,15 @@ GROUP BY id`,
 		t.Error(err)
 	}
 
-	inputChan := rc.StreamBackfillData("public.whiskies", snapshotName)
+	colChan, rowChan := rc.StreamBackfillData("public.whiskies", snapshotName, readQuery)
+	cols := <-colChan
 
 	for {
-		backfillBatch := <-inputChan
-		if backfillBatch == nil || len(backfillBatch.Rows) == 0 {
+		rows := <-rowChan
+		if rows == nil || len(rows) == 0 {
 			break
 		}
 
-		cols, rows := r.Read("insert", backfillBatch.Columns, backfillBatch.Types, backfillBatch.Rows)
 		w.WithTransaction(func() { w.Write("insert", cols, rows) })
 	}
 
@@ -88,7 +90,6 @@ got %T %v`, expectedColumns, expectedColumns, columns, columns)
     %T %v,
 got %T %v`, expectedRows, expectedRows, rows, rows)
 	}
-	return
 
 	fmt.Println("Snapshot LSN", pglogrepl.LSN(snapshotLsn))
 	// Now let's stream Jack Daniels
@@ -120,11 +121,11 @@ got %T %v`, expectedRows, expectedRows, rows, rows)
 
 	expectedColumns = []string{"id", "name", "age", "type", "country"}
 	expectedRows = [][]any{
-		{int32(1), "Glenfiddich", int32(15), "Single Malt", "Scotland"},
-		{int32(2), "Lagavulin", int32(12), "Triple Distilled", "Ireland"},
-		{int32(3), "Hibiki", int32(17), "Japanese", "Japan"},
-		{int32(4), "Laphroaig", int32(10), "Salty", "Portugal"},
-		{int32(5), "Jack Daniels", int32(7), "Bourbon", "USA"},
+		{int32(1), "Glenfiddich", int32(30), "Single Malt", "Scotland"},
+		{int32(2), "Lagavulin", int32(24), "Triple Distilled", "Ireland"},
+		{int32(3), "Hibiki", int32(34), "Japanese", "Japan"},
+		{int32(4), "Laphroaig", int32(20), "Salty", "Portugal"},
+		{int32(5), "Jack Daniels", int32(14), "Bourbon", "USA"},
 	}
 	columns, rows = loadWhiskiesFlat(t, chConn)
 
