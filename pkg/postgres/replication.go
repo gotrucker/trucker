@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"iter"
 	"log"
 	"net/url"
 	"strings"
@@ -52,7 +53,7 @@ func (rc *ReplicationClient) Setup() ([]string, uint64, string) {
 	return newTables, uint64(backfillLSN), snapshotName
 }
 
-func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) chan map[string]*Changeset {
+func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) chan iter.Seq[*Changeset] {
 	if rc.running {
 		log.Fatalln("Replication is already running")
 	}
@@ -76,7 +77,7 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 	}
 	log.Println("Logical replication started on slot", rc.publicationName)
 
-	changes := make(chan map[string]*Changeset)
+	changes := make(chan iter.Seq[*Changeset])
 	rc.running = true
 
 	go func() {
@@ -143,7 +144,7 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 				if err != nil {
 					log.Fatalln("ParsePrimaryKeepaliveMessage failed:", err)
 				}
-				log.Println("Primary Keepalive Message =>", "ServerWALEnd:", pkm.ServerWALEnd, "ServerTime:", pkm.ServerTime, "ReplyRequested:", pkm.ReplyRequested)
+				// log.Println("Primary Keepalive Message =>", "ServerWALEnd:", pkm.ServerWALEnd, "ServerTime:", pkm.ServerTime, "ReplyRequested:", pkm.ReplyRequested)
 				if pkm.ServerWALEnd > clientXLogPos {
 					clientXLogPos = pkm.ServerWALEnd
 				}
@@ -209,7 +210,7 @@ func (rc *ReplicationClient) setupPublication() []string {
 	}
 
 	if pubCount < 1 {
-		rc.exec(fmt.Sprintf("create publication \"%s\"", rc.publicationName))
+		rc.exec(fmt.Sprintf("create publication \"%s\" with (publish_via_partition_root = true)", rc.publicationName))
 	}
 
 	rows := rc.query(

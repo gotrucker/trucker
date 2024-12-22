@@ -1,10 +1,10 @@
 package truck
 
 import (
-	// "fmt"
 	"log"
 	"time"
 
+	"github.com/tonyfg/trucker/pkg/clickhouse"
 	"github.com/tonyfg/trucker/pkg/config"
 	"github.com/tonyfg/trucker/pkg/db"
 	"github.com/tonyfg/trucker/pkg/postgres"
@@ -35,9 +35,9 @@ func NewTruck(cfg config.Truck, rc *postgres.ReplicationClient, connCfgs map[str
 		Name:              cfg.Name,
 		ReplicationClient: rc,
 		readQuery:         cfg.Input.Sql,
-		Reader:            db.NewReader(cfg.Input.Sql, connCfgs[cfg.Input.Connection]),
+		Reader:            newReader(cfg.Input.Sql, connCfgs[cfg.Input.Connection]),
 		InputTable:        cfg.Input.Table,
-		Writer:            db.NewWriter(cfg.Input.Connection, cfg.Output.Sql, connCfgs[cfg.Output.Connection]),
+		Writer:            newWriter(cfg.Input.Connection, cfg.Output.Sql, connCfgs[cfg.Output.Connection]),
 		OutputTable:       cfg.Output.Table,
 		ChangesChan:       make(chan *postgres.Changeset),
 		KillChan:          make(chan any),
@@ -70,7 +70,7 @@ func (t *Truck) Backfill(snapshotName string, targetLSN uint64) {
 
 		log.Printf("Backfilling %d rows...\n", len(rows))
 		if len(rows) > 0 {
-			t.Writer.Write("insert", cols, rows)
+			t.Writer.Write(db.Insert, cols, rows)
 		} else {
 			log.Printf("Empty row batch after read query... Skipping\n")
 		}
@@ -96,17 +96,13 @@ func (t *Truck) Start() {
 				if changeset == nil {
 					log.Printf("[Truck %s] Changeset channel closed. Exiting...\n", t.Name)
 					return
-				} else {
-					insertCols, insertVals := t.Reader.Read("insert", changeset.InsertColumns, changeset.InsertTypes, changeset.InsertValues)
-					updateCols, updateVals := t.Reader.Read("update", changeset.UpdateColumns, changeset.UpdateTypes, changeset.UpdateValues)
-					deleteCols, deleteVals := t.Reader.Read("delete", changeset.DeleteColumns, changeset.DeleteTypes, changeset.DeleteValues)
-
-					t.Writer.WithTransaction(func() {
-						t.Writer.Write("insert", insertCols, insertVals)
-						t.Writer.Write("update", updateCols, updateVals)
-						t.Writer.Write("delete", deleteCols, deleteVals)
-					})
 				}
+
+				cols, rows := t.Reader.Read(changeset.Operation, changeset.Columns, changeset.Types, changeset.Values)
+
+				t.Writer.WithTransaction(func() {
+					t.Writer.Write(changeset.Operation, cols, rows)
+				})
 			}
 		}
 	}()
@@ -122,4 +118,30 @@ func (t *Truck) Stop() {
 	default:
 		close(t.KillChan)
 	}
+}
+
+func newReader(inputSql string, cfg config.Connection) db.Reader {
+	switch cfg.Adapter {
+	case "postgres":
+		return postgres.NewReader(inputSql, cfg)
+	case "clickhouse":
+		log.Fatalf("Clickhouse is not supported as an input source")
+	default:
+		log.Fatalf("Unsupported adapter: %s", cfg.Adapter)
+	}
+
+	return nil
+}
+
+func newWriter(inputConnectionName string, outputSql string, cfg config.Connection) db.Writer {
+	switch cfg.Adapter {
+	case "postgres":
+		return postgres.NewWriter(inputConnectionName, outputSql, cfg)
+	case "clickhouse":
+		return clickhouse.NewWriter(inputConnectionName, outputSql, cfg)
+	default:
+		log.Fatalf("Unsupported adapter: %s", cfg.Adapter)
+	}
+
+	return nil
 }

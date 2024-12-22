@@ -149,9 +149,9 @@ func catchup(replicationClients map[string]*postgres.ReplicationClient, trucks m
 					break
 				}
 
-				for table, changeset := range changesets {
+				for changeset := range changesets {
 					for _, truck := range trucks[connName] {
-						if truck.InputTable == table {
+						if truck.InputTable == changeset.Table {
 							truck.ProcessChangeset(changeset)
 						}
 					}
@@ -190,9 +190,9 @@ func streamIt(trucksByInputConnection map[string][]*truck.Truck) {
 		for {
 			changesets := <-changesChan
 
-			for table, changeset := range changesets {
+			for changeset := range changesets {
 				for _, truck := range trucks {
-					if truck.InputTable == table {
+					if truck.InputTable == changeset.Table {
 						truck.ProcessChangeset(changeset)
 					}
 				}

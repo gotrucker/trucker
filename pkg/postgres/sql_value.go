@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"iter"
 	"log"
 	"net/netip"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
+
+	"github.com/tonyfg/trucker/pkg/db"
 )
 
 type sqlValue string
@@ -33,27 +36,16 @@ type WalChange struct {
 }
 
 type Changeset struct {
-	Table         string
-	InsertColumns []string
-	InsertTypes   []string
-	InsertValues  [][]any
-	UpdateColumns []string
-	UpdateTypes   []string
-	UpdateValues  [][]any
-	DeleteColumns []string
-	DeleteTypes   []string
-	DeleteValues  [][]any
+	Table     string
+	Operation uint8 // Insert, Update, or Delete
+	Columns   []string
+	Types     []string
+	Values    [][]any
 }
-
-const (
-	Insert uint8 = iota
-	Update
-	Delete
-)
 
 const maxPreparedStatementArgs = 32767
 
-func makeChangesets(wal2jsonChanges []byte) map[string]*Changeset {
+func makeChangesets(wal2jsonChanges []byte) iter.Seq[*Changeset] {
 	data := WalData{}
 	d := json.NewDecoder(bytes.NewReader(wal2jsonChanges))
 	d.UseNumber()
@@ -61,50 +53,101 @@ func makeChangesets(wal2jsonChanges []byte) map[string]*Changeset {
 		log.Fatalf("Failed to unmarshal wal2json payload: %v\n", err)
 	}
 
-	changesByTable := make(map[string]*Changeset)
+	insertsByTable := make(map[string]*Changeset)
+	updatesByTable := make(map[string]*Changeset)
+	deletesByTable := make(map[string]*Changeset)
 
-	for _, change := range data.Changes {
-		table := fmt.Sprintf("%s.%s", change.Schema, change.Table)
+	return func(yield func(*Changeset) bool) {
+		for _, change := range data.Changes {
+			table := fmt.Sprintf("%s.%s", change.Schema, change.Table)
 
-		if _, ok := changesByTable[table]; !ok {
-			changesByTable[table] = &Changeset{Table: table}
+			switch change.Kind {
+			case "insert":
+				if _, ok := insertsByTable[table]; !ok {
+					insertsByTable[table] = &Changeset{Table: table, Operation: db.Insert}
+				}
+				changeset := insertsByTable[table]
+
+				oldColumns := addPrefix(change.ColumnNames, "old__")
+				nils := make([]any, len(change.ColumnNames))
+
+				changeset.Columns, changeset.Types, changeset.Values = appendChanges(
+					changeset.Columns, changeset.Types, changeset.Values,
+					append(change.ColumnNames, oldColumns...),
+					append(change.ColumnTypes, change.ColumnTypes...),
+					append(change.ColumnValues, nils...),
+				)
+
+				if len(changeset.Columns) * len(changeset.Values) >= maxPreparedStatementArgs - len(changeset.Columns) {
+					if !yield(changeset) {
+						return
+					}
+					delete(insertsByTable, table)
+				}
+			case "update":
+				if _, ok := updatesByTable[table]; !ok {
+					updatesByTable[table] = &Changeset{Table: table, Operation: db.Update}
+				}
+				changeset := updatesByTable[table]
+
+				oldColumns := addPrefix(change.OldKeys.KeyNames, "old__")
+
+				changeset.Columns, changeset.Types, changeset.Values = appendChanges(
+					changeset.Columns, changeset.Types, changeset.Values,
+					append(change.ColumnNames, oldColumns...),
+					append(change.ColumnTypes, change.OldKeys.KeyTypes...),
+					append(change.ColumnValues, change.OldKeys.KeyValues...),
+				)
+
+				if len(changeset.Columns) * len(changeset.Values) >= maxPreparedStatementArgs - len(changeset.Columns) {
+					if !yield(changeset) {
+						return
+					}
+					delete(updatesByTable, table)
+				}
+			case "delete":
+				if _, ok := deletesByTable[table]; !ok {
+					deletesByTable[table] = &Changeset{Table: table, Operation: db.Delete}
+				}
+				changeset := deletesByTable[table]
+
+				oldColumns := addPrefix(change.OldKeys.KeyNames, "old__")
+				nils := make([]any, len(change.OldKeys.KeyNames))
+
+				changeset.Columns, changeset.Types, changeset.Values = appendChanges(
+					changeset.Columns, changeset.Types, changeset.Values,
+					append(oldColumns, change.OldKeys.KeyNames...),
+					append(change.OldKeys.KeyTypes, change.OldKeys.KeyTypes...),
+					append(change.OldKeys.KeyValues, nils...),
+				)
+
+				if len(changeset.Columns) * len(changeset.Values) >= maxPreparedStatementArgs - len(changeset.Columns) {
+					if !yield(changeset) {
+						return
+					}
+					delete(deletesByTable, table)
+				}
+			default:
+				log.Fatalf("Unknown operation: %s\n", change.Kind)
+			}
 		}
-		changeset := changesByTable[table]
 
-		switch change.Kind {
-		case "insert":
-			oldColumns := addPrefix(change.ColumnNames, "old__")
-
-			nils := make([]any, len(change.ColumnNames))
-			changeset.InsertColumns, changeset.InsertTypes, changeset.InsertValues = appendChanges(
-				changeset.InsertColumns, changeset.InsertTypes, changeset.InsertValues,
-				append(change.ColumnNames, oldColumns...),
-				append(change.ColumnTypes, change.ColumnTypes...),
-				append(change.ColumnValues, nils...),
-			)
-		case "update":
-			oldColumns := addPrefix(change.OldKeys.KeyNames, "old__")
-			changeset.UpdateColumns, changeset.UpdateTypes, changeset.UpdateValues = appendChanges(
-				changeset.UpdateColumns, changeset.UpdateTypes, changeset.UpdateValues,
-				append(change.ColumnNames, oldColumns...),
-				append(change.ColumnTypes, change.OldKeys.KeyTypes...),
-				append(change.ColumnValues, change.OldKeys.KeyValues...),
-			)
-		case "delete":
-			oldColumns := addPrefix(change.OldKeys.KeyNames, "old__")
-			nils := make([]any, len(change.OldKeys.KeyNames))
-			changeset.DeleteColumns, changeset.DeleteTypes, changeset.DeleteValues = appendChanges(
-				changeset.DeleteColumns, changeset.DeleteTypes, changeset.DeleteValues,
-				append(oldColumns, change.OldKeys.KeyNames...),
-				append(change.OldKeys.KeyTypes, change.OldKeys.KeyTypes...),
-				append(change.OldKeys.KeyValues, nils...),
-			)
-		default:
-			log.Fatalf("Unknown operation: %s\n", change.Kind)
+		for _, changeset := range insertsByTable {
+			if !yield(changeset) {
+				return
+			}
+		}
+		for _, changeset := range updatesByTable {
+			if !yield(changeset) {
+				return
+			}
+		}
+		for _, changeset := range deletesByTable {
+			if !yield(changeset) {
+				return
+			}
 		}
 	}
-
-	return changesByTable
 }
 
 func addPrefix(strings []string, prefix string) []string {

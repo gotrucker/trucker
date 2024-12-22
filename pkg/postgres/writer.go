@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/tonyfg/trucker/pkg/config"
+	"github.com/tonyfg/trucker/pkg/db"
 )
 
 type Writer struct {
@@ -65,7 +66,7 @@ func (w *Writer) GetCurrentPosition() uint64 {
 	return lsn
 }
 
-func (w *Writer) Write(operation string, columns []string, values [][]any) {
+func (w *Writer) Write(operation uint8, columns []string, values [][]any) {
 	if len(columns) == 0 || len(values) == 0 {
 		return
 	}
@@ -77,7 +78,7 @@ func (w *Writer) Write(operation string, columns []string, values [][]any) {
 	valuesLiteral, flatValues := makeValuesLiteral(columns, types, values)
 
 	tmplVars := map[string]string{
-		"operation": operation,
+		"operation": db.OperationStr(operation),
 		"rows": valuesLiteral.String(),
 	}
 	sql := new(bytes.Buffer)
