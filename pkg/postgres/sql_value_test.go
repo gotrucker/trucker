@@ -4,13 +4,15 @@ import (
 	"encoding/json"
 	"reflect"
 	"testing"
+
+	"github.com/tonyfg/trucker/pkg/db"
 )
 
 func TestMakeChangesets(t *testing.T) {
 	wal2json := `{"change": [
 {"kind":"delete","schema":"public","table":"whiskies","oldkeys":{"keynames":["id","name","age","whisky_type_id"],"keytypes":["integer","text","integer","integer"],"keyvalues":[4,"boda4",15,2]}},
 {"kind":"insert","schema":"public","table":"whiskies","columnnames":["id","name","age","whisky_type_id"],"columntypes":["integer","text","integer","integer"],"columnvalues":[3,"a",12,1]},
-{"kind":"update","schema":"public","table":"whiskies","columnnames":["id","name","age","whisky_type_id"],"columntypes":["integer","text","integer","integer"],"columnvalues":[3,"boda3",12,1],"oldkeys":{"keynames":["id","name","age","whisky_type_id"],"keytypes":["integer","text","integer","integer"],"keyvalues":[3,"a",12,1]}},
+{"kind":"update","schema":"public","table":"whiskies","columnnames":["id","name","age","whisky_type_id"],"columntypes":["integer","text","integer","integer"],"columnvalues":[3,"boda3",12,1],"oldkeys":{"keynames":["id","age","whisky_type_id"],"keytypes":["integer","integer","integer"],"keyvalues":[3,12,1]}},
 {"kind":"update","schema":"public","table":"whiskies","columnnames":["id","name","age","whisky_type_id"],"columntypes":["integer","text","integer","integer"],"columnvalues":[4,"boda4",15,2],"oldkeys":{"keynames":["id","name","age","whisky_type_id"],"keytypes":["integer","text","integer","integer"],"keyvalues":[4,"b",15,2]}},
 {"kind":"insert","schema":"public","table":"whiskies","columnnames":["id","name","age","whisky_type_id"],"columntypes":["integer","text","integer","integer"],"columnvalues":[4,"b",15,2]},
 {"kind":"delete","schema":"public","table":"whiskies","oldkeys":{"keynames":["id","name","age","whisky_type_id"],"keytypes":["integer","text","integer","integer"],"keyvalues":[5,"boda5",18,3]}},
@@ -21,29 +23,32 @@ func TestMakeChangesets(t *testing.T) {
 {"kind":"delete","schema":"public","table":"whiskies","oldkeys":{"keynames":["id","name","age","whisky_type_id"],"keytypes":["integer","text","integer","integer"],"keyvalues":[3,"boda3",12,1]}}
 ]}`
 
-	tableChanges := makeChangesets([]byte(wal2json))
-
-	if len(tableChanges) != 1 {
-		t.Errorf("Expected 1 table to have changes, got %d", len(tableChanges))
+	changesets := make([]*Changeset, 0, 3)
+	for changeset := range makeChangesets([]byte(wal2json)) {
+		changesets = append(changesets, changeset)
 	}
 
-	keys := make([]string, 0, len(tableChanges))
-	for k := range tableChanges {
-		keys = append(keys, k)
-	}
-	if keys[0] != "public.whiskies" {
-		t.Errorf("Expected table to be 'public.whiskies', got %s", keys[0])
+	if len(changesets) != 3 {
+		t.Errorf("Expected 3 changes, got %d", len(changesets))
 	}
 
-	changes := tableChanges["public.whiskies"]
+	change1 := changesets[0]
+	if change1.Operation != db.Insert {
+		t.Errorf("Expected operation to be Insert, got %s", db.OperationStr(change1.Operation))
+	}
+
+	if change1.Table != "public.whiskies" {
+		t.Errorf("Expected table to be 'public.whiskies', got %s", change1.Table)
+	}
+
 	if !reflect.DeepEqual(
-		changes.InsertColumns,
+		change1.Columns,
 		[]string{"id", "name", "age", "whisky_type_id", "old__id", "old__name", "old__age", "old__whisky_type_id"},
 	) {
 		t.Errorf(`Expected InsertColumns to be
     ['id', 'name', 'age', 'whisky_type_id', 'old__id', 'old__name', 'old__age', 'old__whisky_type_id']
 got %v`,
-			changes.InsertColumns)
+			change1.Columns)
 	}
 
 	expectedInsertVals := [][]any{
@@ -51,55 +56,65 @@ got %v`,
 		{json.Number("4"), "b", json.Number("15"), json.Number("2"), nil, nil, nil, nil},
 		{json.Number("5"), "c", json.Number("18"), json.Number("3"), nil, nil, nil, nil},
 	}
-	if !reflect.DeepEqual(changes.InsertValues, expectedInsertVals) {
+	if !reflect.DeepEqual(change1.Values, expectedInsertVals) {
 		t.Errorf(`Expected InsertValues to be
     %v
-got %v`, expectedInsertVals, changes.InsertValues)
+got %v`, expectedInsertVals, change1.Values)
 	}
 
-	if !reflect.DeepEqual(changes.UpdateColumns, []string{
+	change2 := changesets[1]
+	if change2.Operation != db.Update {
+		t.Errorf("Expected operation to be Update, got %s", db.OperationStr(change2.Operation))
+	}
+
+	if !reflect.DeepEqual(change2.Columns, []string{
 		"id", "name", "age", "whisky_type_id",
-		"old__id", "old__name", "old__age", "old__whisky_type_id",
+		"old__id", "old__age", "old__whisky_type_id", "old__name",
 	}) {
 		t.Errorf(
 			`Expected UpdateColumns to be
-    ['id', 'name', 'age', 'whisky_type_id', 'old__id', 'old__name', 'old__age', 'old__whisky_type_id']
+    ['id', 'name', 'age', 'whisky_type_id', 'old__id', 'old__age', 'old__whisky_type_id', 'old__name']
 got %v`,
-			changes.UpdateColumns)
+			change2.Columns)
 	}
 
 	expectedUpdateVals := [][]any{
-		{json.Number("3"), "boda3", json.Number("12"), json.Number("1"), json.Number("3"), "a", json.Number("12"), json.Number("1")},
-		{json.Number("4"), "boda4", json.Number("15"), json.Number("2"), json.Number("4"), "b", json.Number("15"), json.Number("2")},
-		{json.Number("1"), "boda1", json.Number("15"), json.Number("4"), json.Number("1"), "Glenfiddich", json.Number("15"), json.Number("4")},
-		{json.Number("5"), "boda5", json.Number("18"), json.Number("3"), json.Number("5"), "c", json.Number("18"), json.Number("3")},
+		{json.Number("3"), "boda3", json.Number("12"), json.Number("1"), json.Number("3"), json.Number("12"), json.Number("1"), nil},
+		{json.Number("4"), "boda4", json.Number("15"), json.Number("2"), json.Number("4"), json.Number("15"), json.Number("2"), "b"},
+		{json.Number("1"), "boda1", json.Number("15"), json.Number("4"), json.Number("1"), json.Number("15"), json.Number("4"), "Glenfiddich"},
+		{json.Number("5"), "boda5", json.Number("18"), json.Number("3"), json.Number("5"), json.Number("18"), json.Number("3"), "c"},
 	}
-	if !reflect.DeepEqual(changes.UpdateValues, expectedUpdateVals) {
+	if !reflect.DeepEqual(change2.Values, expectedUpdateVals) {
 		t.Errorf(`Expected UpdateValues to be
     %v
-got %v`, expectedUpdateVals, changes.UpdateValues)
+got %v`, expectedUpdateVals, change2.Values)
+	}
+
+	change3 := changesets[2]
+	if change3.Operation != db.Delete {
+		t.Errorf("Expected operation to be Delete, got %s", db.OperationStr(change3.Operation))
 	}
 
 	if !reflect.DeepEqual(
-		changes.DeleteColumns,
-		[]string{"old__id", "old__name", "old__age", "old__whisky_type_id", "id", "name", "age", "whisky_type_id"},
+		change3.Columns,
+		[]string{"id", "name", "age", "whisky_type_id", "old__id", "old__name", "old__age", "old__whisky_type_id"},
 	) {
 		t.Errorf(
 			`Expected DeleteColumns to be
-    ['old__id', 'old__name', 'old__age', 'old__whisky_type_id', 'id', 'name', 'age', 'whisky_type_id']
+    ['id', 'name', 'age', 'whisky_type_id', 'old__id', 'old__name', 'old__age', 'old__whisky_type_id']
 got %v`,
-			changes.DeleteColumns)
+			change3.Columns)
 	}
 
 	expectedDeleteVals := [][]any{
-		{json.Number("4"), "boda4", json.Number("15"), json.Number("2"), nil, nil, nil, nil},
-		{json.Number("5"), "boda5", json.Number("18"), json.Number("3"), nil, nil, nil, nil},
-		{json.Number("1"), "boda1", json.Number("15"), json.Number("4"), nil, nil, nil, nil},
-		{json.Number("3"), "boda3", json.Number("12"), json.Number("1"), nil, nil, nil, nil},
+		{nil, nil, nil, nil, json.Number("4"), "boda4", json.Number("15"), json.Number("2")},
+		{nil, nil, nil, nil, json.Number("5"), "boda5", json.Number("18"), json.Number("3")},
+		{nil, nil, nil, nil, json.Number("1"), "boda1", json.Number("15"), json.Number("4")},
+		{nil, nil, nil, nil, json.Number("3"), "boda3", json.Number("12"), json.Number("1")},
 	}
-	if !reflect.DeepEqual(changes.DeleteValues, expectedDeleteVals) {
+	if !reflect.DeepEqual(change3.Values, expectedDeleteVals) {
 		t.Errorf(`Expected DeleteValues to be
     %v
-got %v`, expectedDeleteVals, changes.DeleteValues)
+got %v`, expectedDeleteVals, change3.Values)
 	}
 }

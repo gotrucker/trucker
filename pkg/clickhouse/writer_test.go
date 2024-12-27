@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/tonyfg/trucker/pkg/db"
 	"github.com/tonyfg/trucker/test/helpers"
 )
 
@@ -74,7 +75,7 @@ func TestWrite(t *testing.T) {
 	w.SetupPositionTracking()
 
 	w.Write(
-		"insert",
+		db.Insert,
 		[]string{"id", "name", "age", "type", "country"},
 		[][]any{{1, "Green Spot", 10, "Single Pot Still", "Ireland"}},
 	)

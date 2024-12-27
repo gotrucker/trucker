@@ -12,6 +12,7 @@ import (
 
 	"github.com/tonyfg/trucker/pkg/db"
 	"github.com/tonyfg/trucker/pkg/postgres"
+	"github.com/tonyfg/trucker/pkg/truck"
 	"github.com/tonyfg/trucker/test/helpers"
 )
 
@@ -28,12 +29,12 @@ func TestStreamBackfillReadAndWrite(t *testing.T) {
 	defer chConn.Close()
 	rc := postgres.NewReplicationClient([]string{"public.whiskies"}, helpers.PostgresCfg)
 
-	r := db.NewReader(
+	r := truck.NewReader(
 		readQuery,
 		helpers.PostgresCfg,
 	)
 
-	w := db.NewWriter(
+	w := truck.NewWriter(
 		"test",
 		`INSERT INTO trucker.whiskies_flat (id, name, age, type, country)
 SELECT id,
@@ -67,7 +68,7 @@ GROUP BY id`,
 			break
 		}
 
-		w.WithTransaction(func() { w.Write("insert", cols, rows) })
+		w.WithTransaction(func() { w.Write(db.Insert, cols, rows) })
 	}
 
 	expectedColumns := []string{"id", "name", "age", "type", "country"}
@@ -94,29 +95,31 @@ got %T %v`, expectedRows, expectedRows, rows, rows)
 	fmt.Println("Snapshot LSN", pglogrepl.LSN(snapshotLsn))
 	// Now let's stream Jack Daniels
 	streamChan := rc.Start(snapshotLsn, 0)
+	processedChangeset := false
 
 	select {
 	case changesets := <-streamChan:
-		changeset := changesets["public.whiskies"]
+		for changeset := range changesets {
+			processedChangeset = true
+			if changeset.Operation != db.Insert {
+				t.Error("Expected insert operation, got", db.OperationStr(changeset.Operation))
+			}
 
-		if len(changeset.UpdateValues) != 0 {
-			t.Errorf("Expected 0 updates, got %d", len(changeset.UpdateValues))
+			columns, values := r.Read(db.Insert, changeset.Columns, changeset.Types, changeset.Values)
+			w.WithTransaction(func() { w.Write(db.Insert, columns, values) })
 		}
-		if len(changeset.DeleteValues) != 0 {
-			t.Errorf("Expected 0 deletes, got %d", len(changeset.DeleteValues))
-		}
-
-		columns, values := r.Read("insert", changeset.InsertColumns, changeset.InsertTypes, changeset.InsertValues)
-		w.WithTransaction(func() { w.Write("insert", columns, values) })
 	case <-time.After(3 * time.Second):
 		t.Error("Reading from channel took too long...")
 	}
 
+	if !processedChangeset {
+		t.Error("Expected to process a changeset, but didn't")
+	}
+
 	rc.Close()
 	changesets := <-streamChan
-	changeset := changesets["public.whiskies"]
-	if changeset != nil {
-		t.Error("Expected the channel to be closed, but got", changeset)
+	if changesets != nil {
+		t.Error("Expected the channel to be closed, but got", changesets)
 	}
 
 	expectedColumns = []string{"id", "name", "age", "type", "country"}

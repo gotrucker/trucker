@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/tonyfg/trucker/pkg/db"
 	"github.com/tonyfg/trucker/test/helpers"
 )
 
@@ -103,7 +104,7 @@ func TestWrite(t *testing.T) {
 	w.SetupPositionTracking()
 
 	w.Write(
-		"insert",
+		db.Insert,
 		[]string{"name", "age", "whisky_type_id"},
 		[][]any{{"Green Spot", 10, 1}},
 	)

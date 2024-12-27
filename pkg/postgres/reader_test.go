@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/tonyfg/trucker/pkg/db"
 	"github.com/tonyfg/trucker/test/helpers"
 )
 
@@ -21,7 +22,7 @@ JOIN whisky_types t ON t.id = r.whisky_type_id`)
 		{3, "Hibiki", 17, 2},
 	}
 
-	cols, vals := r.Read("insert", columns, types, rows)
+	cols, vals := r.Read(db.Insert, columns, types, rows)
 
 	expectedCols := []string{"op", "id", "name", "age", "type"}
 	if !reflect.DeepEqual(cols, expectedCols) {
@@ -73,7 +74,7 @@ WHERE table_schema = 'public'
 		rowValues = append(rowValues, values)
 	}
 
-	r.Read("insert", columns, types, rowValues)
+	r.Read(db.Insert, columns, types, rowValues)
 }
 
 func readerTestSetup(inputSql string) *Reader {

@@ -35,9 +35,9 @@ func NewTruck(cfg config.Truck, rc *postgres.ReplicationClient, connCfgs map[str
 		Name:              cfg.Name,
 		ReplicationClient: rc,
 		readQuery:         cfg.Input.Sql,
-		Reader:            newReader(cfg.Input.Sql, connCfgs[cfg.Input.Connection]),
+		Reader:            NewReader(cfg.Input.Sql, connCfgs[cfg.Input.Connection]),
 		InputTable:        cfg.Input.Table,
-		Writer:            newWriter(cfg.Input.Connection, cfg.Output.Sql, connCfgs[cfg.Output.Connection]),
+		Writer:            NewWriter(cfg.Input.Connection, cfg.Output.Sql, connCfgs[cfg.Output.Connection]),
 		OutputTable:       cfg.Output.Table,
 		ChangesChan:       make(chan *postgres.Changeset),
 		KillChan:          make(chan any),
@@ -120,7 +120,7 @@ func (t *Truck) Stop() {
 	}
 }
 
-func newReader(inputSql string, cfg config.Connection) db.Reader {
+func NewReader(inputSql string, cfg config.Connection) db.Reader {
 	switch cfg.Adapter {
 	case "postgres":
 		return postgres.NewReader(inputSql, cfg)
@@ -133,7 +133,7 @@ func newReader(inputSql string, cfg config.Connection) db.Reader {
 	return nil
 }
 
-func newWriter(inputConnectionName string, outputSql string, cfg config.Connection) db.Writer {
+func NewWriter(inputConnectionName string, outputSql string, cfg config.Connection) db.Writer {
 	switch cfg.Adapter {
 	case "postgres":
 		return postgres.NewWriter(inputConnectionName, outputSql, cfg)

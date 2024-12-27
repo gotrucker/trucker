@@ -6,11 +6,11 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-
 	"time"
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/tonyfg/trucker/pkg/db"
 	"github.com/tonyfg/trucker/test/helpers"
 )
 
@@ -55,27 +55,32 @@ func TestStart(t *testing.T) {
 	// TODO: Check types are correct
 	select {
 	case res := <-changesChan:
-		if len(res) != 1 {
-			t.Error("Expected to receive 1 change, but got", len(res))
+		changesets := make([]*Changeset, 0, 1)
+		for changeset := range res {
+			changesets = append(changesets, changeset)
 		}
-		change := res["public.countries"]
+
+		if len(changesets) != 1 {
+			t.Error("Expected to receive 1 change, but got", len(changesets))
+		}
+
+		change := changesets[0]
+		if change.Table != "public.countries" {
+			t.Errorf("Expected table to be 'public.countries', but got %s", change.Table)
+		}
+
+		if change.Operation != db.Insert {
+			t.Errorf("Expected operation to be Insert, but got %s", db.OperationStr(change.Operation))
+		}
 
 		expectedInsertCols := []string{"id", "name", "old__id", "old__name"}
-		if !reflect.DeepEqual(change.InsertColumns, expectedInsertCols) {
-			t.Errorf("Expected InsertCols to be %v but got %v", expectedInsertCols, change.InsertColumns)
+		if !reflect.DeepEqual(change.Columns, expectedInsertCols) {
+			t.Errorf("Expected InsertCols to be %v but got %v", expectedInsertCols, change.Columns)
 		}
 
 		expectedInsertValues := [][]any{{json.Number("6"), "Jamaica", nil, nil}}
-		if !reflect.DeepEqual(change.InsertValues, expectedInsertValues) {
-			t.Errorf("Expected Values to be %v but got %v", expectedInsertValues, change.InsertValues)
-		}
-
-		if len(change.UpdateColumns) > 0 || len(change.UpdateValues) > 0 {
-			t.Error("Expected UpdateColumns to be empty, but got", change.UpdateColumns)
-		}
-
-		if len(change.DeleteColumns) > 0 || len(change.DeleteValues) > 0 {
-			t.Error("Expected DeleteColumns to be empty, but got", change.DeleteColumns)
+		if !reflect.DeepEqual(change.Values, expectedInsertValues) {
+			t.Errorf("Expected Values to be %v but got %v", expectedInsertValues, change.Values)
 		}
 	case <-time.After(1000 * time.Millisecond):
 		t.Error("Reading from replication stream took too long...")
@@ -90,27 +95,32 @@ func TestStart(t *testing.T) {
 
 	select {
 	case res := <-changesChan:
-		if len(res) != 1 {
-			t.Error("Expected to receive 1 change, but got", len(res))
+		changesets := make([]*Changeset, 0, 1)
+		for changeset := range res {
+			changesets = append(changesets, changeset)
 		}
-		change := res["public.countries"]
+
+		if len(changesets) != 1 {
+			t.Error("Expected to receive 1 change, but got", len(changesets))
+		}
+
+		change := changesets[0]
+		if change.Table != "public.countries" {
+			t.Errorf("Expected table to be 'public.countries', but got %s", change.Table)
+		}
+
+		if change.Operation != db.Update {
+			t.Errorf("Expected operation to be Update, but got %s", db.OperationStr(change.Operation))
+		}
 
 		expectedUpdateCols := []string{"id", "name", "old__id", "old__name"}
-		if !reflect.DeepEqual(change.UpdateColumns, expectedUpdateCols) {
-			t.Errorf("Expected UpdateCols to be %v but got %v", expectedUpdateCols, change.UpdateColumns)
+		if !reflect.DeepEqual(change.Columns, expectedUpdateCols) {
+			t.Errorf("Expected UpdateCols to be %v but got %v", expectedUpdateCols, change.Columns)
 		}
 
 		expectedUpdateValues := [][]any{{json.Number("6"), "Jameca", json.Number("6"), "Jamaica"}}
-		if !reflect.DeepEqual(change.UpdateValues, expectedUpdateValues) {
-			t.Errorf("Expected Values to be %v but got %v", expectedUpdateValues, change.UpdateValues)
-		}
-
-		if len(change.InsertColumns) > 0 || len(change.InsertValues) > 0 {
-			t.Error("Expected InsertColumns to be empty, but got", change.UpdateColumns)
-		}
-
-		if len(change.DeleteColumns) > 0 || len(change.DeleteValues) > 0 {
-			t.Error("Expected DeleteColumns to be empty, but got", change.DeleteColumns)
+		if !reflect.DeepEqual(change.Values, expectedUpdateValues) {
+			t.Errorf("Expected Values to be %v but got %v", expectedUpdateValues, change.Values)
 		}
 	case <-time.After(1000 * time.Millisecond):
 		t.Error("Reading from replication stream took too long...")
@@ -125,27 +135,32 @@ func TestStart(t *testing.T) {
 
 	select {
 	case res := <-changesChan:
-		if len(res) != 1 {
-			t.Error("Expected to receive 1 change, but got", len(res))
-		}
-		change := res["public.countries"]
-
-		expectedDeleteCols := []string{"old__id", "old__name", "id", "name"}
-		if !reflect.DeepEqual(change.DeleteColumns, expectedDeleteCols) {
-			t.Errorf("Expected UpdateCols to be %v but got %v", expectedDeleteCols, change.DeleteColumns)
+		changesets := make([]*Changeset, 0, 1)
+		for changeset := range res {
+			changesets = append(changesets, changeset)
 		}
 
-		expectedDeleteValues := [][]any{{json.Number("6"), "Jameca", nil, nil}}
-		if !reflect.DeepEqual(change.DeleteValues, expectedDeleteValues) {
-			t.Errorf("Expected Values to be %v but got %v", expectedDeleteValues, change.DeleteValues)
+		if len(changesets) != 1 {
+			t.Error("Expected to receive 1 change, but got", len(changesets))
 		}
 
-		if len(change.InsertColumns) > 0 || len(change.InsertValues) > 0 {
-			t.Error("Expected InsertColumns to be empty, but got", change.UpdateColumns)
+		change := changesets[0]
+		if change.Table != "public.countries" {
+			t.Errorf("Expected table to be 'public.countries', but got %s", change.Table)
 		}
 
-		if len(change.UpdateColumns) > 0 || len(change.UpdateValues) > 0 {
-			t.Error("Expected UpdateColumns to be empty, but got", change.DeleteColumns)
+		if change.Operation != db.Delete {
+			t.Errorf("Expected operation to be Delete, but got %s", db.OperationStr(change.Operation))
+		}
+
+		expectedDeleteCols := []string{"id", "name", "old__id", "old__name"}
+		if !reflect.DeepEqual(change.Columns, expectedDeleteCols) {
+			t.Errorf("Expected UpdateCols to be %v but got %v", expectedDeleteCols, change.Columns)
+		}
+
+		expectedDeleteValues := [][]any{{nil, nil, json.Number("6"), "Jameca"}}
+		if !reflect.DeepEqual(change.Values, expectedDeleteValues) {
+			t.Errorf("Expected Values to be %v but got %v", expectedDeleteValues, change.Values)
 		}
 	case <-time.After(1000 * time.Millisecond):
 		t.Error("Reading from replication stream took too long...")

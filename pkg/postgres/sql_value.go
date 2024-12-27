@@ -7,6 +7,7 @@ import (
 	"iter"
 	"log"
 	"net/netip"
+	"slices"
 	"strings"
 	"time"
 
@@ -69,7 +70,7 @@ func makeChangesets(wal2jsonChanges []byte) iter.Seq[*Changeset] {
 				changeset := insertsByTable[table]
 
 				oldColumns := addPrefix(change.ColumnNames, "old__")
-				nils := make([]any, len(change.ColumnNames))
+				nils := make([]any, len(oldColumns))
 
 				changeset.Columns, changeset.Types, changeset.Values = appendChanges(
 					changeset.Columns, changeset.Types, changeset.Values,
@@ -90,13 +91,15 @@ func makeChangesets(wal2jsonChanges []byte) iter.Seq[*Changeset] {
 				}
 				changeset := updatesByTable[table]
 
-				oldColumns := addPrefix(change.OldKeys.KeyNames, "old__")
+				oldColumns, extraTypes := padColumns(change.OldKeys.KeyNames, change.ColumnNames, change.ColumnTypes)
+				oldColumns = addPrefix(oldColumns, "old__")
+				nils := make([]any, len(oldColumns) - len(change.OldKeys.KeyNames))
 
 				changeset.Columns, changeset.Types, changeset.Values = appendChanges(
 					changeset.Columns, changeset.Types, changeset.Values,
 					append(change.ColumnNames, oldColumns...),
-					append(change.ColumnTypes, change.OldKeys.KeyTypes...),
-					append(change.ColumnValues, change.OldKeys.KeyValues...),
+					append(append(change.ColumnTypes, change.OldKeys.KeyTypes...), extraTypes...),
+					append(append(change.ColumnValues, change.OldKeys.KeyValues...), nils...),
 				)
 
 				if len(changeset.Columns) * len(changeset.Values) >= maxPreparedStatementArgs - len(changeset.Columns) {
@@ -112,13 +115,13 @@ func makeChangesets(wal2jsonChanges []byte) iter.Seq[*Changeset] {
 				changeset := deletesByTable[table]
 
 				oldColumns := addPrefix(change.OldKeys.KeyNames, "old__")
-				nils := make([]any, len(change.OldKeys.KeyNames))
+				nils := make([]any, len(oldColumns))
 
 				changeset.Columns, changeset.Types, changeset.Values = appendChanges(
 					changeset.Columns, changeset.Types, changeset.Values,
-					append(oldColumns, change.OldKeys.KeyNames...),
+					append(change.OldKeys.KeyNames, oldColumns...),
 					append(change.OldKeys.KeyTypes, change.OldKeys.KeyTypes...),
-					append(change.OldKeys.KeyValues, nils...),
+					append(nils, change.OldKeys.KeyValues...),
 				)
 
 				if len(changeset.Columns) * len(changeset.Values) >= maxPreparedStatementArgs - len(changeset.Columns) {
@@ -178,6 +181,25 @@ func appendChanges(columns []string, types []string, values [][]any, newColumns 
 	}
 
 	return columns, types, values
+}
+
+func padColumns(oldColumns []string, allColumns []string, types []string) ([]string, []string) {
+	missingCols := len(allColumns) - len(oldColumns)
+
+	if missingCols == 0 {
+		return oldColumns, []string{}
+	}
+
+	extraTypes := make([]string, 0, missingCols)
+
+	for i, col := range allColumns {
+		if !slices.Contains(oldColumns, col) {
+			oldColumns = append(oldColumns, col)
+			extraTypes = append(extraTypes, types[i])
+		}
+	}
+
+	return oldColumns, extraTypes
 }
 
 func makeValuesLiteral(columns []string, types []string, rows [][]any) (valuesLiteral *strings.Builder, values []any) {
