@@ -27,11 +27,9 @@ type WalChange struct {
 	Schema       string   `json:"schema"`
 	Table        string   `json:"table"`
 	ColumnNames  []string `json:"columnnames"`
-	ColumnTypes  []string `json:"columntypes"`
 	ColumnValues []any    `json:"columnvalues"`
 	OldKeys      struct {
 		KeyNames  []string `json:"keynames"`
-		KeyTypes  []string `json:"keytypes"`
 		KeyValues []any    `json:"keyvalues"`
 	} `json:"oldkeys"`
 }
@@ -39,14 +37,13 @@ type WalChange struct {
 type Changeset struct {
 	Table     string
 	Operation uint8 // Insert, Update, or Delete
-	Columns   []string
-	Types     []string
+	Columns   []db.Column
 	Values    [][]any
 }
 
 const maxPreparedStatementArgs = 32767
 
-func makeChangesets(wal2jsonChanges []byte) iter.Seq[*Changeset] {
+func makeChangesets(wal2jsonChanges []byte, columnsCache map[string][]db.Column) iter.Seq[*Changeset] {
 	data := WalData{}
 	d := json.NewDecoder(bytes.NewReader(wal2jsonChanges))
 	d.UseNumber()
@@ -62,6 +59,26 @@ func makeChangesets(wal2jsonChanges []byte) iter.Seq[*Changeset] {
 		for _, change := range data.Changes {
 			table := fmt.Sprintf("%s.%s", change.Schema, change.Table)
 
+			tableCols := columnsCache[table]
+			numCols := len(tableCols)
+			columns := make([]db.Column, numCols * 2)
+			values := make([]any, len(columns))
+
+			for i, col := range tableCols {
+				columns[i] = col
+				columns[i+numCols] = db.Column{Name: "old__" + col.Name, Type: col.Type}
+
+				valueIdx := slices.Index(change.ColumnNames, col.Name)
+				if valueIdx > -1 {
+					values[i] = change.ColumnValues[i]
+				}
+
+				oldValueIdx := slices.Index(change.OldKeys.KeyNames, col.Name)
+				if oldValueIdx > -1 {
+					values[i+numCols] = change.OldKeys.KeyValues[oldValueIdx]
+				}
+			}
+
 			switch change.Kind {
 			case "insert":
 				if _, ok := insertsByTable[table]; !ok {
@@ -69,15 +86,8 @@ func makeChangesets(wal2jsonChanges []byte) iter.Seq[*Changeset] {
 				}
 				changeset := insertsByTable[table]
 
-				oldColumns := addPrefix(change.ColumnNames, "old__")
-				nils := make([]any, len(oldColumns))
-
-				changeset.Columns, changeset.Types, changeset.Values = appendChanges(
-					changeset.Columns, changeset.Types, changeset.Values,
-					append(change.ColumnNames, oldColumns...),
-					append(change.ColumnTypes, change.ColumnTypes...),
-					append(change.ColumnValues, nils...),
-				)
+				changeset.Columns = columns // TODO: Avoid recalculating this on every iteration
+				changeset.Values = append(changeset.Values, values)
 
 				if len(changeset.Columns) * len(changeset.Values) >= maxPreparedStatementArgs - len(changeset.Columns) {
 					if !yield(changeset) {
@@ -91,16 +101,8 @@ func makeChangesets(wal2jsonChanges []byte) iter.Seq[*Changeset] {
 				}
 				changeset := updatesByTable[table]
 
-				oldColumns, extraTypes := padColumns(change.OldKeys.KeyNames, change.ColumnNames, change.ColumnTypes)
-				oldColumns = addPrefix(oldColumns, "old__")
-				nils := make([]any, len(oldColumns) - len(change.OldKeys.KeyNames))
-
-				changeset.Columns, changeset.Types, changeset.Values = appendChanges(
-					changeset.Columns, changeset.Types, changeset.Values,
-					append(change.ColumnNames, oldColumns...),
-					append(append(change.ColumnTypes, change.OldKeys.KeyTypes...), extraTypes...),
-					append(append(change.ColumnValues, change.OldKeys.KeyValues...), nils...),
-				)
+				changeset.Columns = columns // TODO: Avoid recalculating this on every iteration
+				changeset.Values = append(changeset.Values, values)
 
 				if len(changeset.Columns) * len(changeset.Values) >= maxPreparedStatementArgs - len(changeset.Columns) {
 					if !yield(changeset) {
@@ -114,17 +116,10 @@ func makeChangesets(wal2jsonChanges []byte) iter.Seq[*Changeset] {
 				}
 				changeset := deletesByTable[table]
 
-				oldColumns := addPrefix(change.OldKeys.KeyNames, "old__")
-				nils := make([]any, len(oldColumns))
+				changeset.Columns = columns // TODO: Avoid recalculating this on every iteration
+				changeset.Values = append(changeset.Values, values)
 
-				changeset.Columns, changeset.Types, changeset.Values = appendChanges(
-					changeset.Columns, changeset.Types, changeset.Values,
-					append(change.OldKeys.KeyNames, oldColumns...),
-					append(change.OldKeys.KeyTypes, change.OldKeys.KeyTypes...),
-					append(nils, change.OldKeys.KeyValues...),
-				)
-
-				if len(changeset.Columns) * len(changeset.Values) >= maxPreparedStatementArgs - len(changeset.Columns) {
+				if len(columns) * len(changeset.Values) >= maxPreparedStatementArgs - len(columns) {
 					if !yield(changeset) {
 						return
 					}
@@ -153,57 +148,8 @@ func makeChangesets(wal2jsonChanges []byte) iter.Seq[*Changeset] {
 	}
 }
 
-func addPrefix(strings []string, prefix string) []string {
-	prefixed := make([]string, len(strings))
-	for i, str := range strings {
-		prefixed[i] = prefix + str
-	}
-	return prefixed
-}
-
-func appendChanges(columns []string, types []string, values [][]any, newColumns []string, newTypes []string, newValues []any) ([]string, []string, [][]any) {
-	if columns == nil {
-		columns = newColumns
-		types = newTypes
-		values = make([][]any, 1)
-		values[0] = newValues
-	} else {
-		vals := make([]any, len(columns))
-		for i, col := range columns {
-			for j, newCol := range newColumns {
-				if newCol == col {
-					vals[i] = newValues[j]
-					break
-				}
-			}
-		}
-		values = append(values, vals)
-	}
-
-	return columns, types, values
-}
-
-func padColumns(oldColumns []string, allColumns []string, types []string) ([]string, []string) {
-	missingCols := len(allColumns) - len(oldColumns)
-
-	if missingCols == 0 {
-		return oldColumns, []string{}
-	}
-
-	extraTypes := make([]string, 0, missingCols)
-
-	for i, col := range allColumns {
-		if !slices.Contains(oldColumns, col) {
-			oldColumns = append(oldColumns, col)
-			extraTypes = append(extraTypes, types[i])
-		}
-	}
-
-	return oldColumns, extraTypes
-}
-
-func makeValuesLiteral(columns []string, types []string, rows [][]any) (valuesLiteral *strings.Builder, values []any) {
-	values = make([]any, 0, len(columns)*len(columns[0]))
+func makeValuesLiteral(columns []db.Column, rows [][]any) (valuesLiteral *strings.Builder, values []any) {
+	values = make([]any, 0, len(columns)*len(rows))
 	var sb strings.Builder
 	sb.WriteString("(VALUES ")
 
@@ -218,7 +164,7 @@ func makeValuesLiteral(columns []string, types []string, rows [][]any) (valuesLi
 				sb.WriteByte(',')
 			}
 
-			sb.WriteString(fmt.Sprintf("$%d::%s", (i*len(row))+j+1, types[j]))
+			sb.WriteString(fmt.Sprintf("$%d::%s", (i*len(row))+j+1, columns[j].Type))
 			values = append(values, val)
 		}
 
@@ -230,7 +176,7 @@ func makeValuesLiteral(columns []string, types []string, rows [][]any) (valuesLi
 		if i > 0 {
 			sb.WriteByte(',')
 		}
-		sb.WriteString(fmt.Sprintf(`"%s"`, col))
+		sb.WriteString(fmt.Sprintf(`"%s"`, col.Name))
 	}
 	sb.WriteByte(')')
 

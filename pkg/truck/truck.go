@@ -98,7 +98,7 @@ func (t *Truck) Start() {
 					return
 				}
 
-				cols, rows := t.Reader.Read(changeset.Operation, changeset.Columns, changeset.Types, changeset.Values)
+				cols, rows := t.Reader.Read(changeset.Operation, changeset.Columns, changeset.Values)
 
 				t.Writer.WithTransaction(func() {
 					t.Writer.Write(changeset.Operation, cols, rows)

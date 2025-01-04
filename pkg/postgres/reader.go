@@ -31,12 +31,12 @@ func NewReader(readQuery string, cfg config.Connection) *Reader {
 // - transform the input args into a postgres values literal
 // - feed that to the template as a .rows variable
 // - run the query with values args and return the result
-func (r *Reader) Read(operation uint8, columns []string, types []string, rowValues [][]any) ([]string, [][]any) {
+func (r *Reader) Read(operation uint8, columns []db.Column, rowValues [][]any) ([]string, [][]any) {
 	if len(columns) == 0 || len(rowValues) == 0 {
 		return nil, nil
 	}
 
-	valuesLiteral, values := makeValuesLiteral(columns, types, rowValues)
+	valuesLiteral, values := makeValuesLiteral(columns, rowValues)
 
 	tmplVars := map[string]string{
 		"operation": db.OperationStr(operation),

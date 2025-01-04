@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgproto3"
 
 	"github.com/tonyfg/trucker/pkg/config"
+	"github.com/tonyfg/trucker/pkg/db"
 )
 
 type ReplicationClient struct {
@@ -26,6 +27,7 @@ type ReplicationClient struct {
 	writtenLSN      pglogrepl.LSN
 	running         bool
 	done            chan bool
+	columnsCache    map[string][]db.Column
 }
 
 func NewReplicationClient(tables []string, connCfg config.Connection) *ReplicationClient {
@@ -35,6 +37,7 @@ func NewReplicationClient(tables []string, connCfg config.Connection) *Replicati
 		connCfg:         connCfg,
 		running:         false,
 		done:            make(chan bool, 1),
+		columnsCache:    make(map[string][]db.Column),
 	}
 }
 
@@ -44,6 +47,30 @@ func (rc *ReplicationClient) Setup() ([]string, uint64, string) {
 	// we need to keep the connection open so that the other connection can use
 	// the repliaction slot snapshot for backfills
 	// defer client.streamConn.Close(context.Background())
+
+	for _, table := range rc.tables {
+		rc.columnsCache[table] = make([]db.Column, 0)
+
+		schemaAndTable := strings.Split(table, ".")
+		rows := rc.query(
+			`SELECT column_name, data_type, udt_name FROM information_schema.columns
+WHERE table_schema = $1 AND table_name = $2
+ORDER BY ordinal_position`,
+			schemaAndTable[0],
+			schemaAndTable[1],
+		)
+
+		var columnName, dataType, udtName string
+		for rows.Next() {
+			rows.Scan(&columnName, &dataType, &udtName)
+
+			if dataType == "ARRAY" {
+				udtName = fmt.Sprintf("%s[]", udtName[1:])
+			}
+
+			rc.columnsCache[table] = append(rc.columnsCache[table], db.Column{Name: columnName, Type: udtName})
+		}
+	}
 
 	newTables := rc.setupPublication()
 	currentLSN, backfillLSN, snapshotName := rc.setupReplicationSlot(len(newTables) > 0)
@@ -158,7 +185,7 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 					log.Fatalln("ParseXLogData failed:", err)
 				}
 
-				changes <- makeChangesets(xld.WALData)
+				changes <- makeChangesets(xld.WALData, rc.columnsCache)
 
 				if xld.WALStart > clientXLogPos {
 					clientXLogPos = xld.WALStart

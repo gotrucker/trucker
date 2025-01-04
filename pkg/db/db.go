@@ -8,8 +8,13 @@ const (
 	Delete
 )
 
+type Column struct {
+	Name string
+	Type string
+}
+
 type Reader interface {
-	Read(operation uint8, columns []string, types []string, rowValues [][]any) ([]string, [][]any)
+	Read(operation uint8, columns []Column, rowValues [][]any) ([]string, [][]any)
 	Close()
 }
 

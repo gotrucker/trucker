@@ -10,7 +10,7 @@ import (
 
 func TestMakeChangesets(t *testing.T) {
 	wal2json := `{"change": [
-{"kind":"delete","schema":"public","table":"whiskies","oldkeys":{"keynames":["id","name","age","whisky_type_id"],"keytypes":["integer","text","integer","integer"],"keyvalues":[4,"boda4",15,2]}},
+{"kind":"delete","schema":"public","table":"whiskies","oldkeys":{"keynames":["id","age","whisky_type_id"],"keytypes":["integer","integer","integer"],"keyvalues":[4,15,2]}},
 {"kind":"insert","schema":"public","table":"whiskies","columnnames":["id","name","age","whisky_type_id"],"columntypes":["integer","text","integer","integer"],"columnvalues":[3,"a",12,1]},
 {"kind":"update","schema":"public","table":"whiskies","columnnames":["id","name","age","whisky_type_id"],"columntypes":["integer","text","integer","integer"],"columnvalues":[3,"boda3",12,1],"oldkeys":{"keynames":["id","age","whisky_type_id"],"keytypes":["integer","integer","integer"],"keyvalues":[3,12,1]}},
 {"kind":"update","schema":"public","table":"whiskies","columnnames":["id","name","age","whisky_type_id"],"columntypes":["integer","text","integer","integer"],"columnvalues":[4,"boda4",15,2],"oldkeys":{"keynames":["id","name","age","whisky_type_id"],"keytypes":["integer","text","integer","integer"],"keyvalues":[4,"b",15,2]}},
@@ -23,8 +23,28 @@ func TestMakeChangesets(t *testing.T) {
 {"kind":"delete","schema":"public","table":"whiskies","oldkeys":{"keynames":["id","name","age","whisky_type_id"],"keytypes":["integer","text","integer","integer"],"keyvalues":[3,"boda3",12,1]}}
 ]}`
 
+	var columnsCache = map[string][]db.Column{
+		"public.whiskies": {
+			{Name: "id", Type: "integer"},
+			{Name: "name", Type: "text"},
+			{Name: "age", Type: "integer"},
+			{Name: "whisky_type_id", Type: "integer"},
+		},
+	}
+
+	expectedColumns := []db.Column{
+		{Name: "id", Type: "integer"},
+		{Name: "name", Type: "text"},
+		{Name: "age", Type: "integer"},
+		{Name: "whisky_type_id", Type: "integer"},
+		{Name: "old__id", Type: "integer"},
+		{Name: "old__name", Type: "text"},
+		{Name: "old__age", Type: "integer"},
+		{Name: "old__whisky_type_id", Type: "integer"},
+	}
+
 	changesets := make([]*Changeset, 0, 3)
-	for changeset := range makeChangesets([]byte(wal2json)) {
+	for changeset := range makeChangesets([]byte(wal2json), columnsCache) {
 		changesets = append(changesets, changeset)
 	}
 
@@ -41,10 +61,7 @@ func TestMakeChangesets(t *testing.T) {
 		t.Errorf("Expected table to be 'public.whiskies', got %s", change1.Table)
 	}
 
-	if !reflect.DeepEqual(
-		change1.Columns,
-		[]string{"id", "name", "age", "whisky_type_id", "old__id", "old__name", "old__age", "old__whisky_type_id"},
-	) {
+	if !reflect.DeepEqual(change1.Columns, expectedColumns) {
 		t.Errorf(`Expected InsertColumns to be
     ['id', 'name', 'age', 'whisky_type_id', 'old__id', 'old__name', 'old__age', 'old__whisky_type_id']
 got %v`,
@@ -67,10 +84,7 @@ got %v`, expectedInsertVals, change1.Values)
 		t.Errorf("Expected operation to be Update, got %s", db.OperationStr(change2.Operation))
 	}
 
-	if !reflect.DeepEqual(change2.Columns, []string{
-		"id", "name", "age", "whisky_type_id",
-		"old__id", "old__age", "old__whisky_type_id", "old__name",
-	}) {
+	if !reflect.DeepEqual(change2.Columns, expectedColumns) {
 		t.Errorf(
 			`Expected UpdateColumns to be
     ['id', 'name', 'age', 'whisky_type_id', 'old__id', 'old__age', 'old__whisky_type_id', 'old__name']
@@ -95,10 +109,7 @@ got %v`, expectedUpdateVals, change2.Values)
 		t.Errorf("Expected operation to be Delete, got %s", db.OperationStr(change3.Operation))
 	}
 
-	if !reflect.DeepEqual(
-		change3.Columns,
-		[]string{"id", "name", "age", "whisky_type_id", "old__id", "old__name", "old__age", "old__whisky_type_id"},
-	) {
+	if !reflect.DeepEqual(change3.Columns, expectedColumns) {
 		t.Errorf(
 			`Expected DeleteColumns to be
     ['id', 'name', 'age', 'whisky_type_id', 'old__id', 'old__name', 'old__age', 'old__whisky_type_id']
@@ -107,7 +118,7 @@ got %v`,
 	}
 
 	expectedDeleteVals := [][]any{
-		{nil, nil, nil, nil, json.Number("4"), "boda4", json.Number("15"), json.Number("2")},
+		{nil, nil, nil, nil, json.Number("4"), nil, json.Number("15"), json.Number("2")},
 		{nil, nil, nil, nil, json.Number("5"), "boda5", json.Number("18"), json.Number("3")},
 		{nil, nil, nil, nil, json.Number("1"), "boda1", json.Number("15"), json.Number("4")},
 		{nil, nil, nil, nil, json.Number("3"), "boda3", json.Number("12"), json.Number("1")},

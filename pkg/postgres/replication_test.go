@@ -52,7 +52,6 @@ func TestStart(t *testing.T) {
 
 	changesChan := rc.Start(backfillLSN, 0)
 
-	// TODO: Check types are correct
 	select {
 	case res := <-changesChan:
 		changesets := make([]*Changeset, 0, 1)
@@ -73,7 +72,12 @@ func TestStart(t *testing.T) {
 			t.Errorf("Expected operation to be Insert, but got %s", db.OperationStr(change.Operation))
 		}
 
-		expectedInsertCols := []string{"id", "name", "old__id", "old__name"}
+		expectedInsertCols := []db.Column{
+			{Name: "id", Type: "int4"},
+			{Name: "name", Type: "text"},
+			{Name: "old__id", Type: "int4"},
+			{Name: "old__name", Type: "text"},
+		}
 		if !reflect.DeepEqual(change.Columns, expectedInsertCols) {
 			t.Errorf("Expected InsertCols to be %v but got %v", expectedInsertCols, change.Columns)
 		}
@@ -113,7 +117,12 @@ func TestStart(t *testing.T) {
 			t.Errorf("Expected operation to be Update, but got %s", db.OperationStr(change.Operation))
 		}
 
-		expectedUpdateCols := []string{"id", "name", "old__id", "old__name"}
+		expectedUpdateCols := []db.Column{
+			{Name: "id", Type: "int4"},
+			{Name: "name", Type: "text"},
+			{Name: "old__id", Type: "int4"},
+			{Name: "old__name", Type: "text"},
+		}
 		if !reflect.DeepEqual(change.Columns, expectedUpdateCols) {
 			t.Errorf("Expected UpdateCols to be %v but got %v", expectedUpdateCols, change.Columns)
 		}
@@ -153,7 +162,12 @@ func TestStart(t *testing.T) {
 			t.Errorf("Expected operation to be Delete, but got %s", db.OperationStr(change.Operation))
 		}
 
-		expectedDeleteCols := []string{"id", "name", "old__id", "old__name"}
+		expectedDeleteCols := []db.Column{
+			{Name: "id", Type: "int4"},
+			{Name: "name", Type: "text"},
+			{Name: "old__id", Type: "int4"},
+			{Name: "old__name", Type: "text"},
+		}
 		if !reflect.DeepEqual(change.Columns, expectedDeleteCols) {
 			t.Errorf("Expected UpdateCols to be %v but got %v", expectedDeleteCols, change.Columns)
 		}

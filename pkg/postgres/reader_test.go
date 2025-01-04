@@ -15,14 +15,18 @@ FROM {{ .rows }}
 JOIN whisky_types t ON t.id = r.whisky_type_id`)
 	defer r.Close()
 
-	columns := []string{"id", "name", "age", "whisky_type_id"}
-	types := []string{"int8", "text", "int8", "int8"}
+	columns := []db.Column{
+		db.Column{Name: "id", Type: "int8"},
+		db.Column{Name: "name", Type: "text"},
+		db.Column{Name: "age", Type: "int8"},
+		db.Column{Name: "whisky_type_id", Type: "int8"},
+	}
 	rows := [][]any{
 		{1, "Glenfiddich", 15, 4},
 		{3, "Hibiki", 17, 2},
 	}
 
-	cols, vals := r.Read(db.Insert, columns, types, rows)
+	cols, vals := r.Read(db.Insert, columns, rows)
 
 	expectedCols := []string{"op", "id", "name", "age", "type"}
 	if !reflect.DeepEqual(cols, expectedCols) {
@@ -74,7 +78,11 @@ WHERE table_schema = 'public'
 		rowValues = append(rowValues, values)
 	}
 
-	r.Read(db.Insert, columns, types, rowValues)
+	cols := make([]db.Column, len(columns))
+	for i, col := range columns {
+		cols[i] = db.Column{Name: col, Type: types[i]}
+	}
+	r.Read(db.Insert, cols, rowValues)
 }
 
 func readerTestSetup(inputSql string) *Reader {

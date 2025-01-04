@@ -75,7 +75,12 @@ func (w *Writer) Write(operation uint8, columns []string, values [][]any) {
 	for i := range columns {
 		types[i] = sqlTypeFromGoValue(values[0][i])
 	}
-	valuesLiteral, flatValues := makeValuesLiteral(columns, types, values)
+
+	cols := make([]db.Column, len(columns))
+	for i, col := range columns {
+		cols[i] = db.Column{Name: col, Type: types[i]}
+	}
+	valuesLiteral, flatValues := makeValuesLiteral(cols, values)
 
 	tmplVars := map[string]string{
 		"operation": db.OperationStr(operation),
