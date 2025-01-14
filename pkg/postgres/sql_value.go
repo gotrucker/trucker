@@ -51,23 +51,43 @@ func makeChangesets(wal2jsonChanges []byte, columnsCache map[string][]db.Column)
 		log.Fatalf("Failed to unmarshal wal2json payload: %v\n", err)
 	}
 
-	insertsByTable := make(map[string]*Changeset)
-	updatesByTable := make(map[string]*Changeset)
-	deletesByTable := make(map[string]*Changeset)
+	changesets := make([]map[string]*Changeset, 3)
 
 	return func(yield func(*Changeset) bool) {
 		for _, change := range data.Changes {
 			table := fmt.Sprintf("%s.%s", change.Schema, change.Table)
 
+			var operation uint8
+			switch change.Kind {
+			case "insert":
+				operation = db.Insert
+			case "update":
+				operation = db.Update
+			case "delete":
+				operation = db.Delete
+			default:
+				log.Fatalf("Unknown operation: %s\n", change.Kind)
+			}
+
+			if changesets[operation] == nil {
+				changesets[operation] = make(map[string]*Changeset)
+			}
+			operationChangesets := changesets[operation]
+
+			if _, ok := operationChangesets[table]; !ok {
+				operationChangesets[table] = &Changeset{
+					Table: table,
+					Operation: operation,
+					Columns: changesetCols(columnsCache[table]),
+				}
+			}
+			changeset := operationChangesets[table]
+
 			tableCols := columnsCache[table]
 			numCols := len(tableCols)
-			columns := make([]db.Column, numCols * 2)
-			values := make([]any, len(columns))
+			values := make([]any, numCols * 2)
 
 			for i, col := range tableCols {
-				columns[i] = col
-				columns[i+numCols] = db.Column{Name: "old__" + col.Name, Type: col.Type}
-
 				valueIdx := slices.Index(change.ColumnNames, col.Name)
 				if valueIdx > -1 {
 					values[i] = change.ColumnValues[i]
@@ -79,73 +99,33 @@ func makeChangesets(wal2jsonChanges []byte, columnsCache map[string][]db.Column)
 				}
 			}
 
-			switch change.Kind {
-			case "insert":
-				if _, ok := insertsByTable[table]; !ok {
-					insertsByTable[table] = &Changeset{Table: table, Operation: db.Insert}
-				}
-				changeset := insertsByTable[table]
+			changeset.Values = append(changeset.Values, values)
 
-				changeset.Columns = columns // TODO: Avoid recalculating this on every iteration
-				changeset.Values = append(changeset.Values, values)
-
-				if len(changeset.Columns) * len(changeset.Values) >= maxPreparedStatementArgs - len(changeset.Columns) {
-					if !yield(changeset) {
-						return
-					}
-					delete(insertsByTable, table)
+			if len(changeset.Columns) * len(changeset.Values) >= maxPreparedStatementArgs - len(changeset.Columns) {
+				if !yield(changeset) {
+					return
 				}
-			case "update":
-				if _, ok := updatesByTable[table]; !ok {
-					updatesByTable[table] = &Changeset{Table: table, Operation: db.Update}
-				}
-				changeset := updatesByTable[table]
-
-				changeset.Columns = columns // TODO: Avoid recalculating this on every iteration
-				changeset.Values = append(changeset.Values, values)
-
-				if len(changeset.Columns) * len(changeset.Values) >= maxPreparedStatementArgs - len(changeset.Columns) {
-					if !yield(changeset) {
-						return
-					}
-					delete(updatesByTable, table)
-				}
-			case "delete":
-				if _, ok := deletesByTable[table]; !ok {
-					deletesByTable[table] = &Changeset{Table: table, Operation: db.Delete}
-				}
-				changeset := deletesByTable[table]
-
-				changeset.Columns = columns // TODO: Avoid recalculating this on every iteration
-				changeset.Values = append(changeset.Values, values)
-
-				if len(columns) * len(changeset.Values) >= maxPreparedStatementArgs - len(columns) {
-					if !yield(changeset) {
-						return
-					}
-					delete(deletesByTable, table)
-				}
-			default:
-				log.Fatalf("Unknown operation: %s\n", change.Kind)
+				delete (changesets[operation], table)
 			}
 		}
 
-		for _, changeset := range insertsByTable {
-			if !yield(changeset) {
-				return
-			}
-		}
-		for _, changeset := range updatesByTable {
-			if !yield(changeset) {
-				return
-			}
-		}
-		for _, changeset := range deletesByTable {
-			if !yield(changeset) {
-				return
+		for _, operationChangesets := range changesets {
+			for _, changeset := range operationChangesets {
+				if !yield(changeset) {
+					return
+				}
 			}
 		}
 	}
+}
+
+func changesetCols(columns []db.Column) []db.Column {
+	cols := make([]db.Column, len(columns)*2)
+	for i, col := range columns {
+		cols[i] = col
+		cols[i+len(columns)] = db.Column{Name: "old__" + col.Name, Type: col.Type}
+	}
+	return cols
 }
 
 func makeValuesLiteral(columns []db.Column, rows [][]any) (valuesLiteral *strings.Builder, values []any) {

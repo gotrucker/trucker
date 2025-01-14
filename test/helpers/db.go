@@ -40,8 +40,14 @@ var (
 
 func PreparePostgresTestDb() *pgx.Conn {
 	conn := Connect(PostgresCfg)
+
+	_, err := conn.Exec(context.Background(), "SELECT pg_terminate_backend(active_pid) FROM pg_replication_slots")
+	if err != nil {
+		panic(err)
+	}
+
 	sql := ReadTestDbSql(PostgresCfg.Adapter)
-	_, err := conn.Exec(context.Background(), sql)
+	_, err = conn.Exec(context.Background(), sql)
 	if err != nil {
 		panic(err)
 	}

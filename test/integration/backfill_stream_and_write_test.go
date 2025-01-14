@@ -105,7 +105,7 @@ got %T %v`, expectedRows, expectedRows, rows, rows)
 				t.Error("Expected insert operation, got", db.OperationStr(changeset.Operation))
 			}
 
-			columns, values := r.Read(db.Insert, changeset.Columns, changeset.Types, changeset.Values)
+			columns, values := r.Read(db.Insert, changeset.Columns, changeset.Values)
 			w.WithTransaction(func() { w.Write(db.Insert, columns, values) })
 		}
 	case <-time.After(3 * time.Second):

@@ -22,7 +22,6 @@ func TestMakeChangesets(t *testing.T) {
 {"kind":"delete","schema":"public","table":"whiskies","oldkeys":{"keynames":["id","name","age","whisky_type_id"],"keytypes":["integer","text","integer","integer"],"keyvalues":[1,"boda1",15,4]}},
 {"kind":"delete","schema":"public","table":"whiskies","oldkeys":{"keynames":["id","name","age","whisky_type_id"],"keytypes":["integer","text","integer","integer"],"keyvalues":[3,"boda3",12,1]}}
 ]}`
-
 	var columnsCache = map[string][]db.Column{
 		"public.whiskies": {
 			{Name: "id", Type: "integer"},
@@ -93,10 +92,10 @@ got %v`,
 	}
 
 	expectedUpdateVals := [][]any{
-		{json.Number("3"), "boda3", json.Number("12"), json.Number("1"), json.Number("3"), json.Number("12"), json.Number("1"), nil},
-		{json.Number("4"), "boda4", json.Number("15"), json.Number("2"), json.Number("4"), json.Number("15"), json.Number("2"), "b"},
-		{json.Number("1"), "boda1", json.Number("15"), json.Number("4"), json.Number("1"), json.Number("15"), json.Number("4"), "Glenfiddich"},
-		{json.Number("5"), "boda5", json.Number("18"), json.Number("3"), json.Number("5"), json.Number("18"), json.Number("3"), "c"},
+		{json.Number("3"), "boda3", json.Number("12"), json.Number("1"), json.Number("3"), nil, json.Number("12"), json.Number("1")},
+		{json.Number("4"), "boda4", json.Number("15"), json.Number("2"), json.Number("4"), "b", json.Number("15"), json.Number("2")},
+		{json.Number("1"), "boda1", json.Number("15"), json.Number("4"), json.Number("1"), "Glenfiddich", json.Number("15"), json.Number("4")},
+		{json.Number("5"), "boda5", json.Number("18"), json.Number("3"), json.Number("5"), "c", json.Number("18"), json.Number("3")},
 	}
 	if !reflect.DeepEqual(change2.Values, expectedUpdateVals) {
 		t.Errorf(`Expected UpdateValues to be
