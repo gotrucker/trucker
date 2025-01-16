@@ -6,10 +6,8 @@ import (
 	"fmt"
 	"iter"
 	"log"
-	"net/netip"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 
@@ -76,16 +74,16 @@ func makeChangesets(wal2jsonChanges []byte, columnsCache map[string][]db.Column)
 
 			if _, ok := operationChangesets[table]; !ok {
 				operationChangesets[table] = &Changeset{
-					Table: table,
+					Table:     table,
 					Operation: operation,
-					Columns: changesetCols(columnsCache[table]),
+					Columns:   changesetCols(columnsCache[table]),
 				}
 			}
 			changeset := operationChangesets[table]
 
 			tableCols := columnsCache[table]
 			numCols := len(tableCols)
-			values := make([]any, numCols * 2)
+			values := make([]any, numCols*2)
 
 			for i, col := range tableCols {
 				valueIdx := slices.Index(change.ColumnNames, col.Name)
@@ -101,11 +99,11 @@ func makeChangesets(wal2jsonChanges []byte, columnsCache map[string][]db.Column)
 
 			changeset.Values = append(changeset.Values, values)
 
-			if len(changeset.Columns) * len(changeset.Values) >= maxPreparedStatementArgs - len(changeset.Columns) {
+			if len(changeset.Columns)*len(changeset.Values) >= maxPreparedStatementArgs-len(changeset.Columns) {
 				if !yield(changeset) {
 					return
 				}
-				delete (changesets[operation], table)
+				delete(changesets[operation], table)
 			}
 		}
 
@@ -144,7 +142,11 @@ func makeValuesLiteral(columns []db.Column, rows [][]any) (valuesLiteral *string
 				sb.WriteByte(',')
 			}
 
-			sb.WriteString(fmt.Sprintf("$%d::%s", (i*len(row))+j+1, columns[j].Type))
+			sb.WriteString(fmt.Sprintf(
+				"$%d::%s",
+				(i*len(row))+j+1,
+				dbTypeToPgType(columns[j].Type),
+			))
 			values = append(values, val)
 		}
 
@@ -163,39 +165,170 @@ func makeValuesLiteral(columns []db.Column, rows [][]any) (valuesLiteral *string
 	return &sb, values
 }
 
-// TODO: This is a fucking cheat... We need to query the database to get the
-// type name for each type OID. The list of type OIDs exists in
-// pgx/pgtype/pgtype.go
-// Once we query it we can cache the result safely in a map or something.
-// It doesn't change.
-// TODO: Well actually we have a mostly correct implementation of something similar in backfill.go. Look there for inspiration
-func sqlTypeFromGoValue(value any) string {
-	switch value.(type) {
-	case int32, uint16:
-		return "int"
-	case int, int64, uint32:
-		return "int8"
-	case int8, int16, uint8:
-		return "int2"
-	case json.Number, pgtype.Numeric, uint64:
-		return "numeric"
-	case float32:
-		return "real"
-	case float64:
-		return "double precision"
-	case time.Time:
-		return "timestamptz"
-	case bool:
-		return "bool"
-	case []any:
-		return "json"
-	case map[string]any:
-		return "json"
-	case netip.Addr:
-		return "inet"
-	case netip.Prefix:
-		return "cidr"
+func oidToDbType(oid uint32) uint8 {
+	switch oid {
+	case pgtype.Int2OID:
+		return db.Int16
+	case pgtype.Int4OID:
+		return db.Int32
+	case pgtype.Int8OID:
+		return db.Int64
+	case pgtype.Float4OID:
+		return db.Float32
+	case pgtype.Float8OID:
+		return db.Float64
+	case pgtype.NumericOID:
+		return db.Numeric
+	case pgtype.BoolOID:
+		return db.Bool
+	case pgtype.TextOID, pgtype.VarcharOID, pgtype.QCharOID, pgtype.BPCharOID:
+		return db.String
+	case pgtype.DateOID:
+		return db.Date
+	case pgtype.TimestampOID:
+		return db.DateTime
+	case pgtype.InetOID, pgtype.CIDROID:
+		return db.IPAddr
+	case pgtype.JSONOID, pgtype.JSONBOID:
+		return db.MapStringToString
+	case pgtype.Int2ArrayOID:
+		return db.Int16Array
+	case pgtype.Int4ArrayOID:
+		return db.Int32Array
+	case pgtype.Int8ArrayOID:
+		return db.Int64Array
+	case pgtype.Float4ArrayOID:
+		return db.Float32Array
+	case pgtype.Float8ArrayOID:
+		return db.Float64Array
+	case pgtype.NumericArrayOID:
+		return db.NumericArray
+	case pgtype.BoolArrayOID:
+		return db.BoolArray
+	case pgtype.TextArrayOID, pgtype.VarcharArrayOID, pgtype.QCharArrayOID, pgtype.BPCharArrayOID:
+		return db.StringArray
+	case pgtype.DateArrayOID:
+		return db.DateArray
+	case pgtype.TimestampArrayOID:
+		return db.DateTimeArray
+	case pgtype.InetArrayOID, pgtype.CIDRArrayOID:
+		return db.IPAddrArray
+	case pgtype.JSONArrayOID, pgtype.JSONBArrayOID: // TODO: hstore doesn't have a stable OID since it's an extension. can we get it from pg_types to use here?
+		return db.MapStringToStringArray
 	default:
-		return "text" // FIXME: This isn't really ok is it?
+		log.Printf("[Postgres SQL Value] Unknown OID %d, treating as string...\n", oid)
+		return db.String
+	}
+}
+
+func pgTypeToDbType(pgType string) uint8 {
+	switch pgType {
+	case "smallint", "int2", "smallserial":
+		return db.Int16
+	case "int", "int4", "serial":
+		return db.Int32
+	case "bigint", "int8", "bigserial":
+		return db.Int64
+	case "real", "float4":
+		return db.Float32
+	case "double precision", "float8":
+		return db.Float64
+	case "decimal", "numeric":
+		return db.Numeric
+	case "boolean", "bool":
+		return db.Bool
+	case "text", "varchar", "character varying", "character", "char", "bpchar":
+		return db.String
+	case "date":
+		return db.Date
+	case "timestamp without time zone", "timestamp with time zone", "timestamp", "timestamptz":
+		return db.DateTime
+	case "inet", "cidr":
+		return db.IPAddr
+	case "hstore", "json", "jsonb":
+		return db.MapStringToString
+	case "int2[]":
+		return db.Int16Array
+	case "int4[]":
+		return db.Int32Array
+	case "int8[]":
+		return db.Int64Array
+	case "float4[]":
+		return db.Float32Array
+	case "float8[]":
+		return db.Float64Array
+	case "numeric[]":
+		return db.NumericArray
+	case "bool[]":
+		return db.BoolArray
+	case "text[]", "varchar[]", "character varying[]", "character[]", "char[]", "bpchar[]":
+		return db.StringArray
+	case "date[]":
+		return db.DateArray
+	case "timestamp[]":
+		return db.DateTimeArray
+	case "inet[]", "cidr[]":
+		return db.IPAddrArray
+	case "hstore[]", "json[]", "jsonb[]":
+		return db.MapStringToStringArray
+	default:
+		log.Printf("[Postgres SQL Value] Unknown type %s, treating as string...\n", pgType)
+		return db.String
+	}
+}
+
+func dbTypeToPgType(dbType uint8) string {
+	switch dbType {
+	case db.Int8, db.UInt8, db.Int16:
+		return "int2"
+	case db.UInt16, db.Int32:
+		return "int4"
+	case db.UInt32, db.Int64:
+		return "int8"
+	case db.Float32:
+		return "float4"
+	case db.Float64:
+		return "float8"
+	case db.UInt64, db.Numeric:
+		return "numeric"
+	case db.Bool:
+		return "bool"
+	case db.String:
+		return "text"
+	case db.Date:
+		return "date"
+	case db.DateTime:
+		return "timestamp"
+	case db.IPAddr:
+		return "inet"
+	case db.MapStringToString:
+		return "jsonb"
+	case db.Int8Array, db.UInt8Array, db.Int16Array:
+		return "int2[]"
+	case db.UInt16Array, db.Int32Array:
+		return "int4[]"
+	case db.UInt32Array, db.Int64Array:
+		return "int8[]"
+	case db.Float32Array:
+		return "float4[]"
+	case db.Float64Array:
+		return "float8[]"
+	case db.UInt64Array, db.NumericArray:
+		return "numeric[]"
+	case db.BoolArray:
+		return "bool[]"
+	case db.StringArray:
+		return "text[]"
+	case db.DateArray:
+		return "date[]"
+	case db.DateTimeArray:
+		return "timestamp[]"
+	case db.IPAddrArray:
+		return "inet[]"
+	case db.MapStringToStringArray:
+		return "jsonb[]"
+	default:
+		log.Printf("[Postgres SQL Value] Unknown type %d, treating as text...\n", dbType)
+		return "text"
 	}
 }

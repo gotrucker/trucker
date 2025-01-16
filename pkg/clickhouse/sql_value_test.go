@@ -3,13 +3,23 @@ package clickhouse
 import (
 	"reflect"
 	"testing"
+
+	"github.com/tonyfg/trucker/pkg/db"
 )
 
 func TestMakeValuesLiteral(t *testing.T) {
-	sb, values := makeValuesLiteral([]string{"a", "b"}, [][]any{{1, 2}, {3, 4}})
+	cols := []db.Column{
+		{Name: "a", Type: db.Int64},
+		{Name: "b", Type: db.Int64},
+	}
+	rows := [][]any{{1, 2}, {3, 4}}
+	sb, values := makeValuesLiteral(cols, rows)
 
-	if sb.String() != "VALUES('a Int64,b Int64', ($1,$2),($3,$4)) r" {
-		t.Errorf(`Expected "VALUES('a Int64,b Int64', ($1,$2),($3,$4)) r", got %s`, sb.String())
+	expectedValueStr := "VALUES('a Nullable(Int64),b Nullable(Int64)', ($1,$2),($3,$4)) r"
+	if sb.String() != expectedValueStr {
+		t.Errorf(`Expected:
+     %s
+got: %s`, expectedValueStr, sb.String())
 	}
 
 	if !reflect.DeepEqual(values, []any{1, 2, 3, 4}) {

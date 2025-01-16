@@ -7,6 +7,8 @@ import (
 	"log"
 	"strings"
 	"text/template"
+
+	"github.com/tonyfg/trucker/pkg/db"
 )
 
 const backfillBatchSize = 50000
@@ -17,8 +19,8 @@ type BackfillBatch struct {
 	Rows    [][]any
 }
 
-func (rc *ReplicationClient) StreamBackfillData(table string, snapshotName string, readQuery string) (colsChan chan []string, rowsChan chan [][]any) {
-	colsChan = make(chan []string)
+func (rc *ReplicationClient) StreamBackfillData(table string, snapshotName string, readQuery string) (colsChan chan []db.Column, rowsChan chan [][]any) {
+	colsChan = make(chan []db.Column)
 	rowsChan = make(chan [][]any)
 
 	var schema, tblName, nullFields string
@@ -58,7 +60,7 @@ WHERE table_schema = $1
 	}
 	tmplVars := map[string]string{
 		"operation": "insert",
-		"rows": fmt.Sprintf("(SELECT *, %s FROM %s) r", nullFields, table),
+		"rows":      fmt.Sprintf("(SELECT *, %s FROM %s) r", nullFields, table),
 	}
 	sql := new(bytes.Buffer)
 	err = tmpl.Execute(sql, tmplVars)
@@ -91,9 +93,12 @@ WHERE table_schema = $1
 		defer rows.Close()
 
 		fields := rows.FieldDescriptions()
-		columns := make([]string, len(fields))
+		columns := make([]db.Column, len(fields))
 		for i, field := range fields {
-			columns[i] = field.Name
+			columns[i] = db.Column{
+				Name: field.Name,
+				Type: oidToDbType(field.DataTypeOID),
+			}
 		}
 		colsChan <- columns
 

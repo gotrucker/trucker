@@ -36,8 +36,8 @@ CREATE TABLE public.weird_types (
   a_date date,
   an_ip_addr inet,
   a_jsonb jsonb,
-  -- a_text_arr text[],
-  a_ts timestamp
+  a_ts timestamp,
+  a_text_array text[]
 );
 
 ALTER TABLE public.countries REPLICA IDENTITY FULL;
@@ -53,6 +53,6 @@ VALUES ('Bourbon', 5), ('Japanese', 4), ('Triple Distilled', 3), ('Single Malt',
 INSERT INTO public.whiskies (name, age, whisky_type_id)
 VALUES ('Glenfiddich', 15, 4), ('Lagavulin', 12, 3), ('Hibiki', 17, 2), ('Laphroaig', 10, 5);
 
-INSERT INTO public.weird_types (a_number, a_bool, a_date, an_ip_addr, a_jsonb, a_ts)
-VALUES (1234567890, true, '2020-01-01', '192.168.0.1', '{"key": "value"}', '2020-01-01T00:00:00Z'),
-       (null, null, null, null, null, null);
+INSERT INTO public.weird_types (a_number, a_bool, a_date, an_ip_addr, a_jsonb, a_ts, a_text_array)
+VALUES (1234567890, true, '2020-01-01', '192.168.0.1', '{"key": "value"}', '2020-01-01T00:37:00Z', '{a, b, c}'),
+       (null, null, null, null, null, null, null);

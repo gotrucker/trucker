@@ -41,7 +41,6 @@ func TestLoadConfig(t *testing.T) {
 		t.Error("Expected connection pass = pgpass, got", conn.Pass)
 	}
 
-
 	conn = config.Connections["chconn"]
 
 	if conn.Name != "chconn" {

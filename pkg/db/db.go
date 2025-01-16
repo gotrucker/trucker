@@ -10,11 +10,11 @@ const (
 
 type Column struct {
 	Name string
-	Type string
+	Type uint8
 }
 
 type Reader interface {
-	Read(operation uint8, columns []Column, rowValues [][]any) ([]string, [][]any)
+	Read(operation uint8, columns []Column, rowValues [][]any) ([]Column, [][]any)
 	Close()
 }
 
@@ -22,7 +22,7 @@ type Writer interface {
 	SetupPositionTracking()
 	SetCurrentPosition(lsn uint64)
 	GetCurrentPosition() uint64
-	Write(operation uint8, columns []string, values [][]any)
+	Write(operation uint8, columns []Column, values [][]any)
 	TruncateTable(table string)
 	WithTransaction(f func())
 	Close()

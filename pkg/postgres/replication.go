@@ -49,7 +49,7 @@ func (rc *ReplicationClient) Setup() ([]string, uint64, string) {
 	// defer client.streamConn.Close(context.Background())
 
 	for _, table := range rc.tables {
-		rc.columnsCache[table] = make([]db.Column, 0)
+		rc.columnsCache[table] = make([]db.Column, 0, 1)
 
 		schemaAndTable := strings.Split(table, ".")
 		rows := rc.query(
@@ -68,7 +68,10 @@ ORDER BY ordinal_position`,
 				udtName = fmt.Sprintf("%s[]", udtName[1:])
 			}
 
-			rc.columnsCache[table] = append(rc.columnsCache[table], db.Column{Name: columnName, Type: udtName})
+			rc.columnsCache[table] = append(
+				rc.columnsCache[table],
+				db.Column{Name: columnName, Type: pgTypeToDbType(udtName)},
+			)
 		}
 	}
 

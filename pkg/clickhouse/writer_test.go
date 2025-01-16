@@ -76,7 +76,13 @@ func TestWrite(t *testing.T) {
 
 	w.Write(
 		db.Insert,
-		[]string{"id", "name", "age", "type", "country"},
+		[]db.Column{
+			{Name: "id", Type: db.Int32},
+			{Name: "name", Type: db.String},
+			{Name: "age", Type: db.Int32},
+			{Name: "type", Type: db.String},
+			{Name: "country", Type: db.String},
+		},
 		[][]any{{1, "Green Spot", 10, "Single Pot Still", "Ireland"}},
 	)
 

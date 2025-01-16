@@ -24,22 +24,22 @@ func TestMakeChangesets(t *testing.T) {
 ]}`
 	var columnsCache = map[string][]db.Column{
 		"public.whiskies": {
-			{Name: "id", Type: "integer"},
-			{Name: "name", Type: "text"},
-			{Name: "age", Type: "integer"},
-			{Name: "whisky_type_id", Type: "integer"},
+			{Name: "id", Type: db.Int32},
+			{Name: "name", Type: db.String},
+			{Name: "age", Type: db.Int32},
+			{Name: "whisky_type_id", Type: db.Int32},
 		},
 	}
 
 	expectedColumns := []db.Column{
-		{Name: "id", Type: "integer"},
-		{Name: "name", Type: "text"},
-		{Name: "age", Type: "integer"},
-		{Name: "whisky_type_id", Type: "integer"},
-		{Name: "old__id", Type: "integer"},
-		{Name: "old__name", Type: "text"},
-		{Name: "old__age", Type: "integer"},
-		{Name: "old__whisky_type_id", Type: "integer"},
+		{Name: "id", Type: db.Int32},
+		{Name: "name", Type: db.String},
+		{Name: "age", Type: db.Int32},
+		{Name: "whisky_type_id", Type: db.Int32},
+		{Name: "old__id", Type: db.Int32},
+		{Name: "old__name", Type: db.String},
+		{Name: "old__age", Type: db.Int32},
+		{Name: "old__whisky_type_id", Type: db.Int32},
 	}
 
 	changesets := make([]*Changeset, 0, 3)

@@ -66,25 +66,16 @@ func (w *Writer) GetCurrentPosition() uint64 {
 	return lsn
 }
 
-func (w *Writer) Write(operation uint8, columns []string, values [][]any) {
+func (w *Writer) Write(operation uint8, columns []db.Column, values [][]any) {
 	if len(columns) == 0 || len(values) == 0 {
 		return
 	}
 
-	types := make([]string, len(columns))
-	for i := range columns {
-		types[i] = sqlTypeFromGoValue(values[0][i])
-	}
-
-	cols := make([]db.Column, len(columns))
-	for i, col := range columns {
-		cols[i] = db.Column{Name: col, Type: types[i]}
-	}
-	valuesLiteral, flatValues := makeValuesLiteral(cols, values)
+	valuesLiteral, flatValues := makeValuesLiteral(columns, values)
 
 	tmplVars := map[string]string{
 		"operation": db.OperationStr(operation),
-		"rows": valuesLiteral.String(),
+		"rows":      valuesLiteral.String(),
 	}
 	sql := new(bytes.Buffer)
 	err := w.queryTemplate.Execute(sql, tmplVars)

@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"text/template"
 
-    "github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 
 	"github.com/tonyfg/trucker/pkg/config"
 	"github.com/tonyfg/trucker/pkg/db"
@@ -64,7 +64,7 @@ func (w *Writer) GetCurrentPosition() uint64 {
 	return lsn
 }
 
-func (w *Writer) Write(operation uint8, columns []string, values [][]any) {
+func (w *Writer) Write(operation uint8, columns []db.Column, values [][]any) {
 	if len(columns) == 0 || len(values) == 0 {
 		return
 	}
@@ -73,7 +73,7 @@ func (w *Writer) Write(operation uint8, columns []string, values [][]any) {
 
 	tmplVars := map[string]string{
 		"operation": db.OperationStr(operation),
-		"rows": valuesLiteral.String(),
+		"rows":      valuesLiteral.String(),
 	}
 	sql := new(bytes.Buffer)
 	err := w.queryTemplate.Execute(sql, tmplVars)
@@ -90,10 +90,10 @@ func (w *Writer) Write(operation uint8, columns []string, values [][]any) {
 
 	sqlStr := sql.String()
 	maxQuerySize := w.getMaxQuerySize()
-	if valuesLen + uint64(len(sqlStr)) > maxQuerySize {
+	if valuesLen+uint64(len(sqlStr)) > maxQuerySize {
 		log.Printf(
 			"[Clickhouse Writer] Query size bigger than Clickhouse max_query_size (%d > %d). Splitting into 2...",
-			valuesLen + uint64(len(sqlStr)),
+			valuesLen+uint64(len(sqlStr)),
 			maxQuerySize,
 		)
 
@@ -135,7 +135,6 @@ func (w *Writer) getMaxQuerySize() uint64 {
 FROM system.settings
 WHERE name = 'max_query_size'`,
 		)
-
 
 		var strVal string
 		if err := row.Scan(&strVal); err != nil {

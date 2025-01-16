@@ -5,10 +5,12 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/tonyfg/trucker/pkg/db"
 )
 
 func TestStreamBackfillData(t *testing.T) {
-	conn, rc := replicationTestSetup()
+	conn, rc := replicationTestSetup("public.countries")
 	defer conn.Close(context.Background())
 	defer rc.Close()
 
@@ -26,7 +28,12 @@ func TestStreamBackfillData(t *testing.T) {
 	colChan, rowChan := rc.StreamBackfillData("public.countries", snapshotName, "SELECT * FROM {{ .rows }}")
 	cols := <-colChan
 
-	expectedInsertCols := []string{"id", "name", "old__id", "old__name"}
+	expectedInsertCols := []db.Column{
+		{Name: "id", Type: db.Int32},
+		{Name: "name", Type: db.String},
+		{Name: "old__id", Type: db.Int32},
+		{Name: "old__name", Type: db.String},
+	}
 	if !reflect.DeepEqual(cols, expectedInsertCols) {
 		t.Errorf("Expected InsertCols to be %v but got %v", expectedInsertCols, cols)
 	}

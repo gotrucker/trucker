@@ -31,7 +31,7 @@ func NewReader(readQuery string, cfg config.Connection) *Reader {
 // - transform the input args into a postgres values literal
 // - feed that to the template as a .rows variable
 // - run the query with values args and return the result
-func (r *Reader) Read(operation uint8, columns []db.Column, rowValues [][]any) ([]string, [][]any) {
+func (r *Reader) Read(operation uint8, columns []db.Column, rowValues [][]any) ([]db.Column, [][]any) {
 	if len(columns) == 0 || len(rowValues) == 0 {
 		return nil, nil
 	}
@@ -45,7 +45,7 @@ func (r *Reader) Read(operation uint8, columns []db.Column, rowValues [][]any) (
 	sql := new(bytes.Buffer)
 	err := r.queryTemplate.Execute(sql, tmplVars)
 
-	rows, err := r.conn.Query(context.Background(), sql.String(), values...,)
+	rows, err := r.conn.Query(context.Background(), sql.String(), values...)
 	if err != nil {
 		log.Printf("[Postgres Reader] Error running query:\n%s\n", sql.String())
 		log.Printf("[Postgres Reader] Query values:\n%v\n", values)
@@ -53,9 +53,12 @@ func (r *Reader) Read(operation uint8, columns []db.Column, rowValues [][]any) (
 	}
 	defer rows.Close()
 
-	cols := make([]string, len(rows.FieldDescriptions()))
+	cols := make([]db.Column, len(rows.FieldDescriptions()))
 	for i, field := range rows.FieldDescriptions() {
-		cols[i] = field.Name
+		cols[i] = db.Column{
+			Name: field.Name,
+			Type: oidToDbType(field.DataTypeOID),
+		}
 	}
 
 	vals := make([][]any, 0, 1)

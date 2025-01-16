@@ -17,8 +17,8 @@ import (
 )
 
 var (
-	_, b, _, _    = runtime.Caller(0)
-	Basepath      = filepath.Dir(b)
+	_, b, _, _  = runtime.Caller(0)
+	Basepath    = filepath.Dir(b)
 	PostgresCfg = config.Connection{
 		Name:     "test_pg",
 		Adapter:  "postgres",
@@ -28,13 +28,13 @@ var (
 		User:     "trucker",
 	}
 	ClickhouseCfg = config.Connection{
-		Name: "test_ch",
-		Adapter: "clickhouse",
-		Host: "clickhouse",
-		Port: 9000,
+		Name:     "test_ch",
+		Adapter:  "clickhouse",
+		Host:     "clickhouse",
+		Port:     9000,
 		Database: "trucker",
-		User: "trucker",
-		Pass: "trucker",
+		User:     "trucker",
+		Pass:     "trucker",
 	}
 )
 
