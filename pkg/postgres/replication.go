@@ -83,7 +83,7 @@ ORDER BY ordinal_position`,
 	return newTables, uint64(backfillLSN), snapshotName
 }
 
-func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) chan iter.Seq[*Changeset] {
+func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) chan iter.Seq[*db.Changeset] {
 	if rc.running {
 		log.Fatalln("Replication is already running")
 	}
@@ -107,7 +107,7 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 	}
 	log.Println("Logical replication started on slot", rc.publicationName)
 
-	changes := make(chan iter.Seq[*Changeset])
+	changes := make(chan iter.Seq[*db.Changeset])
 	rc.running = true
 
 	go func() {

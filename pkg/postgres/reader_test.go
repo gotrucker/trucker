@@ -18,18 +18,30 @@ FROM {{ .rows }}
 JOIN whisky_types t ON t.id = r.whisky_type_id`)
 	defer r.Close()
 
-	columns := []db.Column{
-		db.Column{Name: "id", Type: db.Int32},
-		db.Column{Name: "name", Type: db.String},
-		db.Column{Name: "age", Type: db.Int32},
-		db.Column{Name: "whisky_type_id", Type: db.Int32},
-	}
-	rows := [][]any{
-		{1, "Glenfiddich", 15, 4},
-		{3, "Hibiki", 17, 2},
+	changeset := &db.Changeset{
+		Operation: db.Insert,
+		Table: "whiskies",
+		Columns: []db.Column{
+			{Name: "id", Type: db.Int32},
+			{Name: "name", Type: db.String},
+			{Name: "age", Type: db.Int32},
+			{Name: "whisky_type_id", Type: db.Int32},
+		},
+		Values: [][]any{
+			{1, "Glenfiddich", 15, 4},
+			{3, "Hibiki", 17, 2},
+		},
 	}
 
-	cols, vals := r.Read(db.Insert, columns, rows)
+	result := r.Read(changeset)
+
+	if result.Operation != db.Insert {
+		t.Errorf("Expected operation to be Insert, got %s", db.OperationStr(result.Operation))
+	}
+
+	if result.Table != "whiskies" {
+		t.Errorf("Expected table to be 'whiskies', got %s", result.Table)
+	}
 
 	expectedCols := []db.Column{
 		{Name: "op", Type: db.String},
@@ -38,18 +50,18 @@ JOIN whisky_types t ON t.id = r.whisky_type_id`)
 		{Name: "age", Type: db.Int32},
 		{Name: "type", Type: db.String},
 	}
-	if !reflect.DeepEqual(cols, expectedCols) {
-		t.Errorf("Expected columns to be %v, got %v", expectedCols, cols)
+	if !reflect.DeepEqual(result.Columns, expectedCols) {
+		t.Errorf("Expected columns to be %v, got %v", expectedCols, result.Columns)
 	}
 
 	expectedRows := [][]any{
 		{"insert", int32(1), "Glenfiddich", int32(15), "Single Malt"},
 		{"insert", int32(3), "Hibiki", int32(17), "Japanese"},
 	}
-	if !reflect.DeepEqual(vals, expectedRows) {
+	if !reflect.DeepEqual(result.Values, expectedRows) {
 		t.Errorf(`Expected result rows to be:
      %v,
-got: %v`, expectedRows, vals)
+got: %v`, expectedRows, result.Values)
 	}
 }
 
@@ -93,7 +105,15 @@ WHERE table_schema = 'public'
 	for i, col := range columns {
 		cols[i] = db.Column{Name: col, Type: pgTypeToDbType(types[i])}
 	}
-	readCols, readRows := r.Read(db.Insert, cols, rowValues)
+
+	changeset := &db.Changeset{
+		Operation: db.Insert,
+		Table: "weird_types",
+		Columns: cols,
+		Values: rowValues,
+	}
+
+	result := r.Read(changeset)
 
 	expectedReadCols := []db.Column{
 		{Name: "a_number", Type: db.Int64},
@@ -104,50 +124,50 @@ WHERE table_schema = 'public'
 		{Name: "a_ts", Type: db.DateTime},
 		{Name: "a_text_array", Type: db.StringArray},
 	}
-	if !slices.Equal(readCols, expectedReadCols) {
+	if !slices.Equal(result.Columns, expectedReadCols) {
 		t.Fatalf(`Expected readCols to be:
      %v
-got: %v`, expectedReadCols, readCols)
+got: %v`, expectedReadCols, result.Columns)
 	}
 
-	if len(readRows) != 2 {
-		t.Fatalf("Expected to read 2 rows, but got %d", len(readRows))
+	if len(result.Values) != 2 {
+		t.Fatalf("Expected to read 2 rows, but got %d", len(result.Values))
 	}
 
-	if readRows[0][0].(int64) != 1234567890 {
-		t.Fatalf("Expected readRows[0][0] to be 1234567890 but got %T = %v", readRows[0][0], readRows[0][0])
+	if result.Values[0][0].(int64) != 1234567890 {
+		t.Fatalf("Expected readRows[0][0] to be 1234567890 but got %T = %v", result.Values[0][0], result.Values[0][0])
 	}
 
-	if readRows[0][1].(bool) != true {
-		t.Fatalf("Expected readRows[0][1] to be true but got %T = %v", readRows[0][1], readRows[0][1])
+	if result.Values[0][1].(bool) != true {
+		t.Fatalf("Expected readRows[0][1] to be true but got %T = %v", result.Values[0][1], result.Values[0][1])
 	}
 
 	expectedTime, _ := time.Parse(time.DateOnly, "2020-01-01")
-	if readRows[0][2].(time.Time) != expectedTime {
-		t.Fatalf("Expected readRows[0][2] to be '2020-01-01' but got %T = %v", readRows[0][2], readRows[0][2])
+	if result.Values[0][2].(time.Time) != expectedTime {
+		t.Fatalf("Expected readRows[0][2] to be '2020-01-01' but got %T = %v", result.Values[0][2], result.Values[0][2])
 	}
 
 	expectedPrefix := netip.MustParsePrefix("192.168.0.1/32")
-	if readRows[0][3].(netip.Prefix) != expectedPrefix {
-		t.Fatalf("Expected readRows[0][3] to be 192.168.0.1/32 but got %T = %v", readRows[0][3], readRows[0][3])
+	if result.Values[0][3].(netip.Prefix) != expectedPrefix {
+		t.Fatalf("Expected readRows[0][3] to be 192.168.0.1/32 but got %T = %v", result.Values[0][3], result.Values[0][3])
 	}
 
-	if !reflect.DeepEqual(readRows[0][4], map[string]any{"key": "value"}) {
-		t.Fatalf("Expected readRows[0][4] to have 'key' => 'value' but got %T = %v", readRows[0][4], readRows[0][4])
+	if !reflect.DeepEqual(result.Values[0][4], map[string]any{"key": "value"}) {
+		t.Fatalf("Expected readRows[0][4] to have 'key' => 'value' but got %T = %v", result.Values[0][4], result.Values[0][4])
 	}
 
 	expectedTime, _ = time.Parse(time.DateTime, "2020-01-01 00:37:00")
-	if readRows[0][5].(time.Time) != expectedTime {
-		t.Fatalf("Expected readRows[0][5] to be '2020-01-01 00:37:00' but got %T = %v", readRows[0][5], readRows[0][5])
+	if result.Values[0][5].(time.Time) != expectedTime {
+		t.Fatalf("Expected readRows[0][5] to be '2020-01-01 00:37:00' but got %T = %v", result.Values[0][5], result.Values[0][5])
 	}
 
-	if !reflect.DeepEqual(readRows[0][6], []any{"a", "b", "c"}) {
-		t.Fatalf("Expected readRows[0][6] to be ['a', 'b', 'c'] but got %T = %v", readRows[0][6], readRows[0][6])
+	if !reflect.DeepEqual(result.Values[0][6], []any{"a", "b", "c"}) {
+		t.Fatalf("Expected readRows[0][6] to be ['a', 'b', 'c'] but got %T = %v", result.Values[0][6], result.Values[0][6])
 	}
 
-	for i, v := range readRows[1] {
+	for i, v := range result.Values[1] {
 		if v != nil {
-			t.Fatalf("Expected readRows[1] to be all nils but got readRows[1][%d] = %v", i, readRows)
+			t.Fatalf("Expected readRows[1] to be all nils but got readRows[1][%d] = %v", i, result.Values)
 		}
 	}
 }

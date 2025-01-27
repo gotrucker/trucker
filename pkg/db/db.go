@@ -1,6 +1,8 @@
 package db
 
-import "fmt"
+import (
+	"fmt"
+)
 
 const (
 	Insert uint8 = iota
@@ -13,8 +15,15 @@ type Column struct {
 	Type uint8
 }
 
+type Changeset struct {
+	Table     string
+	Operation uint8 // Insert, Update, or Delete
+	Columns   []Column
+	Values    [][]any
+}
+
 type Reader interface {
-	Read(operation uint8, columns []Column, rowValues [][]any) ([]Column, [][]any)
+	Read(changesets *Changeset) *Changeset
 	Close()
 }
 

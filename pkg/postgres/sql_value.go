@@ -32,16 +32,9 @@ type WalChange struct {
 	} `json:"oldkeys"`
 }
 
-type Changeset struct {
-	Table     string
-	Operation uint8 // Insert, Update, or Delete
-	Columns   []db.Column
-	Values    [][]any
-}
-
 const maxPreparedStatementArgs = 32767
 
-func makeChangesets(wal2jsonChanges []byte, columnsCache map[string][]db.Column) iter.Seq[*Changeset] {
+func makeChangesets(wal2jsonChanges []byte, columnsCache map[string][]db.Column) iter.Seq[*db.Changeset] {
 	data := WalData{}
 	d := json.NewDecoder(bytes.NewReader(wal2jsonChanges))
 	d.UseNumber()
@@ -49,9 +42,9 @@ func makeChangesets(wal2jsonChanges []byte, columnsCache map[string][]db.Column)
 		log.Fatalf("Failed to unmarshal wal2json payload: %v\n", err)
 	}
 
-	changesets := make([]map[string]*Changeset, 3)
+	changesets := make([]map[string]*db.Changeset, 3)
 
-	return func(yield func(*Changeset) bool) {
+	return func(yield func(*db.Changeset) bool) {
 		for _, change := range data.Changes {
 			table := fmt.Sprintf("%s.%s", change.Schema, change.Table)
 
@@ -68,12 +61,12 @@ func makeChangesets(wal2jsonChanges []byte, columnsCache map[string][]db.Column)
 			}
 
 			if changesets[operation] == nil {
-				changesets[operation] = make(map[string]*Changeset)
+				changesets[operation] = make(map[string]*db.Changeset)
 			}
 			operationChangesets := changesets[operation]
 
 			if _, ok := operationChangesets[table]; !ok {
-				operationChangesets[table] = &Changeset{
+				operationChangesets[table] = &db.Changeset{
 					Table:     table,
 					Operation: operation,
 					Columns:   changesetCols(columnsCache[table]),
@@ -137,7 +130,7 @@ func makeValuesLiteral(columns []db.Column, rows [][]any) (valuesLiteral *string
 		}
 		sb.WriteByte('(')
 
-		for j, val := range row {
+		for j := range len(columns) {
 			if j > 0 {
 				sb.WriteByte(',')
 			}
@@ -147,9 +140,9 @@ func makeValuesLiteral(columns []db.Column, rows [][]any) (valuesLiteral *string
 				(i*len(row))+j+1,
 				dbTypeToPgType(columns[j].Type),
 			))
-			values = append(values, val)
 		}
 
+		values = append(values, row...)
 		sb.WriteByte(')')
 	}
 

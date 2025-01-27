@@ -197,6 +197,7 @@ func streamIt(trucksByInputConnection map[string][]*truck.Truck) {
 					}
 				}
 			}
+			// FIXME: advancing LSN on output DBs should happen right here instead of inside each truck
 		}
 	}
 }

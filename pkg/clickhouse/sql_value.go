@@ -47,78 +47,79 @@ func makeValuesLiteral(columns []db.Column, rows [][]any) (valuesLiteral *string
 	return &sb, values
 }
 
+// FIXME: This needs to return either the regular types or nullable types depending on whether we have null values... :/
 func dbTypeToChType(dbType uint8) string {
 	switch dbType {
 	case db.Int8:
-		return "Nullable(Int8)"
+		return "Int8"
 	case db.Int16:
-		return "Nullable(Int16)"
+		return "Int16"
 	case db.Int32:
-		return "Nullable(Int32)"
+		return "Int32"
 	case db.Int64:
-		return "Nullable(Int64)"
+		return "Int64"
 	case db.UInt8:
-		return "Nullable(UInt8)"
+		return "UInt8"
 	case db.UInt16:
-		return "Nullable(UInt16)"
+		return "UInt16"
 	case db.UInt32:
-		return "Nullable(UInt32)"
+		return "UInt32"
 	case db.UInt64:
-		return "Nullable(UInt64)"
+		return "UInt64"
 	case db.Float32:
-		return "Nullable(Float32)"
+		return "Float32"
 	case db.Float64:
-		return "Nullable(Float64)"
+		return "Float64"
 	case db.Numeric:
-		return "Nullable(Decimal)"
+		return "Decimal"
 	case db.Bool:
-		return "Nullable(Boolean)"
+		return "Boolean"
 	case db.String:
-		return "Nullable(String)"
+		return "String"
 	case db.Date:
-		return "Nullable(Date32)"
+		return "Date32"
 	case db.DateTime:
-		return "Nullable(DateTime64)"
+		return "DateTime64"
 	case db.IPAddr:
-		return "Nullable(IPv4)" // FIXME: db.IPAddr can actually be an IPv6...
+		return "IPv4" // FIXME: db.IPAddr can actually be an IPv6...
 	case db.MapStringToString:
-		return "Nullable(Map(Nullable(String), Nullable(String)))"
+		return "Map(String, String)"
 	case db.Int8Array:
-		return "Array(Nullable(Int8))"
+		return "Array(Int8)"
 	case db.Int16Array:
-		return "Array(Nullable(Int16))"
+		return "Array(Int16)"
 	case db.Int32Array:
-		return "Array(Nullable(Int32))"
+		return "Array(Int32)"
 	case db.Int64Array:
-		return "Array(Nullable(Int64))"
+		return "Array(Int64)"
 	case db.UInt8Array:
-		return "Array(Nullable(UInt8))"
+		return "Array(UInt8)"
 	case db.UInt16Array:
-		return "Array(Nullable(UInt16))"
+		return "Array(UInt16)"
 	case db.UInt32Array:
-		return "Array(Nullable(UInt32))"
+		return "Array(UInt32)"
 	case db.UInt64Array:
-		return "Array(Nullable(UInt64))"
+		return "Array(UInt64)"
 	case db.Float32Array:
-		return "Array(Nullable(Float32))"
+		return "Array(Float32)"
 	case db.Float64Array:
-		return "Array(Nullable(Float64))"
+		return "Array(Float64)"
 	case db.NumericArray:
-		return "Array(Nullable(Decimal))"
+		return "Array(Decimal)"
 	case db.BoolArray:
-		return "Array(Nullable(Boolean))"
+		return "Array(Boolean)"
 	case db.StringArray:
-		return "Array(Nullable(String))"
+		return "Array(String)"
 	case db.DateTimeArray:
-		return "Array(Nullable(DateTime64))"
+		return "Array(DateTime64)"
 	case db.DateArray:
-		return "Array(Nullable(Date32))"
+		return "Array(Date32)"
 	case db.IPAddrArray:
-		return "Array(Nullable(IPv4))" // FIXME: db.IPAddr can actually be an IPv6...
+		return "Array(IPv4)" // FIXME: db.IPAddr can actually be an IPv6...
 	case db.MapStringToStringArray:
-		return "Array(Nullable(Map(Nullable(String), Nullable(String))))"
+		return "Array(Map(String, String))"
 	default:
 		log.Printf("[Clickhouse SQL Value] Unknown type %d, treating as String...\n", dbType)
-		return "Nullable(String)"
+		return "String"
 	}
 }

@@ -24,7 +24,7 @@ type Truck struct {
 	Writer            db.Writer
 	OutputTable       string
 	OutputSql         string
-	ChangesChan       chan *postgres.Changeset
+	ChangesChan       chan *db.Changeset
 	KillChan          chan any
 	DoneChan          chan ExitMsg
 	CurrentPosition   uint64
@@ -39,7 +39,7 @@ func NewTruck(cfg config.Truck, rc *postgres.ReplicationClient, connCfgs map[str
 		InputTable:        cfg.Input.Table,
 		Writer:            NewWriter(cfg.Input.Connection, cfg.Output.Sql, connCfgs[cfg.Output.Connection]),
 		OutputTable:       cfg.Output.Table,
-		ChangesChan:       make(chan *postgres.Changeset),
+		ChangesChan:       make(chan *db.Changeset),
 		KillChan:          make(chan any),
 		DoneChan:          doneChan,
 	}
@@ -98,17 +98,17 @@ func (t *Truck) Start() {
 					return
 				}
 
-				cols, rows := t.Reader.Read(changeset.Operation, changeset.Columns, changeset.Values)
+				resultChangeset := t.Reader.Read(changeset)
 
 				t.Writer.WithTransaction(func() {
-					t.Writer.Write(changeset.Operation, cols, rows)
+					t.Writer.Write(changeset.Operation, resultChangeset.Columns, resultChangeset.Values)
 				})
 			}
 		}
 	}()
 }
 
-func (t *Truck) ProcessChangeset(changeset *postgres.Changeset) {
+func (t *Truck) ProcessChangeset(changeset *db.Changeset) {
 	t.ChangesChan <- changeset
 }
 

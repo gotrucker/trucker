@@ -54,7 +54,7 @@ func TestStart(t *testing.T) {
 
 	select {
 	case res := <-changesChan:
-		changesets := make([]*Changeset, 0, 1)
+		changesets := make([]*db.Changeset, 0, 1)
 		for changeset := range res {
 			changesets = append(changesets, changeset)
 		}
@@ -99,7 +99,7 @@ func TestStart(t *testing.T) {
 
 	select {
 	case res := <-changesChan:
-		changesets := make([]*Changeset, 0, 1)
+		changesets := make([]*db.Changeset, 0, 1)
 		for changeset := range res {
 			changesets = append(changesets, changeset)
 		}
@@ -144,7 +144,7 @@ func TestStart(t *testing.T) {
 
 	select {
 	case res := <-changesChan:
-		changesets := make([]*Changeset, 0, 1)
+		changesets := make([]*db.Changeset, 0, 1)
 		for changeset := range res {
 			changesets = append(changesets, changeset)
 		}
@@ -200,7 +200,7 @@ VALUES (33, false, '2013-12-11', '193.137.213.0/24', '{"some": "thing"}', '2032-
 
 	select {
 	case res := <-changesChan:
-		changesets := make([]*Changeset, 0, 1)
+		changesets := make([]*db.Changeset, 0, 1)
 		for changeset := range res {
 			changesets = append(changesets, changeset)
 		}

@@ -105,8 +105,8 @@ got %T %v`, expectedRows, expectedRows, rows, rows)
 				t.Error("Expected insert operation, got", db.OperationStr(changeset.Operation))
 			}
 
-			columns, values := r.Read(db.Insert, changeset.Columns, changeset.Values)
-			w.WithTransaction(func() { w.Write(db.Insert, columns, values) })
+			result := r.Read(changeset)
+			w.WithTransaction(func() { w.Write(db.Insert, result.Columns, result.Values) })
 		}
 	case <-time.After(3 * time.Second):
 		t.Error("Reading from channel took too long...")

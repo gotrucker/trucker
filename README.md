@@ -84,8 +84,12 @@ https://pkg.go.dev/go.uber.org/zap
 ?
 
 # Wishes for the future
+- Transactional consistency (each run of input/output should process a transaction in one go)
+- add possibility of multiple input tables on a truck (nice when you would repeat the same input/output.sql over and over again)
+- add only_columns and except_columns to truck.yml input section for performance improvement
 - When people use old__*, check if postgres tables are set to REPLICA IDENTITY FULL (or equivalent for other DBs). Show a decent error msg and exit if it's not
 - Use iterators instead of creating arrays from scratch for everything
+- Revamp streamer/backfill/reader interface to actually hide the reader call. no need for a common interface there since the Read() method doesn't need to be called by the truck at all... We could just have the Backfill(), Start(), and Stop() methods, with Read() being internally implemented. This could allow some advantages in using DB-specific functionality.
 - Integrate DuckDB as a library to allow having lots more input / output sources
 - Large tests with TPC-DS dataset and some gnarly scenarios
 
