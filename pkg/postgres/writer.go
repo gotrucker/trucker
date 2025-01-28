@@ -66,19 +66,34 @@ func (w *Writer) GetCurrentPosition() uint64 {
 	return lsn
 }
 
-func (w *Writer) Write(operation uint8, columns []db.Column, values [][]any) {
-	if len(columns) == 0 || len(values) == 0 {
+func (w *Writer) Write(changeset *db.Changeset) {
+	if len(changeset.Columns) == 0 || len(changeset.Values) == 0 {
 		return
 	}
 
-	valuesLiteral, flatValues := makeValuesLiteral(columns, values)
+	// We need to hold on to a specific connection to be able to create and
+	// access the temporary table until we're done (in case we're not using a
+	// VALUES list)
+	conn, err := w.conn.Acquire(context.Background())
+	if err != nil {
+		panic(err)
+	}
+	defer conn.Release()
+
+	// if len(changeset.Columns)*len(changeset.Values) > maxPreparedStatementArgs {
+	// 	w.writeUsingTempTable(conn, changeset)
+	// } else {
+	// 	w.writeUsingValuesList(conn, changeset)
+	// }
+
+	valuesLiteral, flatValues := makeValuesLiteral(changeset.Columns, changeset.Values)
 
 	tmplVars := map[string]string{
-		"operation": db.OperationStr(operation),
+		"operation": db.OperationStr(changeset.Operation),
 		"rows":      valuesLiteral.String(),
 	}
 	sql := new(bytes.Buffer)
-	err := w.queryTemplate.Execute(sql, tmplVars)
+	err = w.queryTemplate.Execute(sql, tmplVars)
 	if err != nil {
 		panic(err)
 	}

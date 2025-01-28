@@ -23,7 +23,7 @@ type Changeset struct {
 }
 
 type Reader interface {
-	Read(changesets *Changeset) *Changeset
+	Read(changeset *Changeset) *Changeset
 	Close()
 }
 
@@ -31,7 +31,7 @@ type Writer interface {
 	SetupPositionTracking()
 	SetCurrentPosition(lsn uint64)
 	GetCurrentPosition() uint64
-	Write(operation uint8, columns []Column, values [][]any)
+	Write(changeset *Changeset)
 	TruncateTable(table string)
 	WithTransaction(f func())
 	Close()

@@ -20,7 +20,7 @@ JOIN whisky_types t ON t.id = r.whisky_type_id`)
 
 	changeset := &db.Changeset{
 		Operation: db.Insert,
-		Table: "whiskies",
+		Table:     "whiskies",
 		Columns: []db.Column{
 			{Name: "id", Type: db.Int32},
 			{Name: "name", Type: db.String},
@@ -108,9 +108,9 @@ WHERE table_schema = 'public'
 
 	changeset := &db.Changeset{
 		Operation: db.Insert,
-		Table: "weird_types",
-		Columns: cols,
-		Values: rowValues,
+		Table:     "weird_types",
+		Columns:   cols,
+		Values:    rowValues,
 	}
 
 	result := r.Read(changeset)

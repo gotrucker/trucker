@@ -11,38 +11,57 @@ import (
 	"github.com/tonyfg/trucker/pkg/db"
 )
 
-func makeValuesLiteral(columns []db.Column, rows [][]any) (valuesLiteral *strings.Builder, values []any) {
-	values = make([]any, 0, len(rows)*len(rows[0]))
+func makeColumnTypesSql(columns []db.Column) *strings.Builder {
 	var sb strings.Builder
-	sb.WriteString("VALUES('")
-
 	for i, col := range columns {
 		if i > 0 {
 			sb.WriteByte(',')
 		}
-
 		sb.WriteString(fmt.Sprintf("%s %s", col.Name, dbTypeToChType(col.Type)))
 	}
-	sb.WriteString("', ")
 
+	return &sb
+}
+
+func makeValuesList(rows [][]any, maxSize int) (valuesList *strings.Builder, values []any) {
+	var sb strings.Builder
+	values = make([]any, 0, len(rows)*len(rows[0]))
+	var rowSize int
+
+	for _, value := range rows[0] {
+		rowSize += len(fmt.Sprintf("%v", value))
+	}
+
+	totalValueSize := 0
 	for i, row := range rows {
+		bytesWritten := 0
 		if i > 0 {
 			sb.WriteByte(',')
+			bytesWritten++
 		}
 		sb.WriteByte('(')
+		bytesWritten++
 
-		for j, val := range row {
+		for j := range len(rows[0]) {
 			if j > 0 {
 				sb.WriteByte(',')
+				bytesWritten++
 			}
 
-			sb.WriteString(fmt.Sprintf("$%d", (i*len(row))+j+1))
-			values = append(values, val)
+			s := fmt.Sprintf("$%d", (i*len(rows[0]))+j+1)
+			sb.WriteString(s)
+			bytesWritten += len(s)
 		}
 
 		sb.WriteByte(')')
+		values = append(values, row...)
+		bytesWritten += rowSize + 1
+		totalValueSize += rowSize
+
+		if sb.Len()+totalValueSize+bytesWritten+rowSize > maxSize {
+			break
+		}
 	}
-	sb.WriteString(") r")
 
 	return &sb, values
 }

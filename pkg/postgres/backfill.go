@@ -11,7 +11,7 @@ import (
 	"github.com/tonyfg/trucker/pkg/db"
 )
 
-const backfillBatchSize = 50000
+// const backfillBatchSize = 50000
 
 type BackfillBatch struct {
 	Columns []string
@@ -110,14 +110,13 @@ WHERE table_schema = $1
 			}
 			rowValues = append(rowValues, values)
 
-			if i >= backfillBatchSize {
-				rowsChan <- rowValues
-				rowValues = make([][]any, 0, len(rowValues))
-				i = 0
-			}
+			// if i >= backfillBatchSize {
+			// 	rowsChan <- rowValues
+			// 	rowValues = make([][]any, 0, len(rowValues))
+			// 	i = 0
+			// }
 		}
 
-		log.Printf("Read a batch of %d raw rows for backfill...\n", len(rowValues))
 		rowsChan <- rowValues
 	}()
 

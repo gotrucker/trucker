@@ -68,7 +68,13 @@ GROUP BY id`,
 			break
 		}
 
-		w.WithTransaction(func() { w.Write(db.Insert, cols, rows) })
+		changeset := &db.Changeset{
+			Operation: db.Insert,
+			Table:     "public.whiskies",
+			Columns:   cols,
+			Values:    rows,
+		}
+		w.WithTransaction(func() { w.Write(changeset) })
 	}
 
 	expectedColumns := []string{"id", "name", "age", "type", "country"}
@@ -106,7 +112,7 @@ got %T %v`, expectedRows, expectedRows, rows, rows)
 			}
 
 			result := r.Read(changeset)
-			w.WithTransaction(func() { w.Write(db.Insert, result.Columns, result.Values) })
+			w.WithTransaction(func() { w.Write(result) })
 		}
 	case <-time.After(3 * time.Second):
 		t.Error("Reading from channel took too long...")

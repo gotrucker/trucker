@@ -70,7 +70,13 @@ func (t *Truck) Backfill(snapshotName string, targetLSN uint64) {
 
 		log.Printf("Backfilling %d rows...\n", len(rows))
 		if len(rows) > 0 {
-			t.Writer.Write(db.Insert, cols, rows)
+			changeset := &db.Changeset{
+				Operation: db.Insert,
+				Table:     t.InputTable,
+				Columns:   cols,
+				Values:    rows,
+			}
+			t.Writer.Write(changeset)
 		} else {
 			log.Printf("Empty row batch after read query... Skipping\n")
 		}
@@ -101,7 +107,7 @@ func (t *Truck) Start() {
 				resultChangeset := t.Reader.Read(changeset)
 
 				t.Writer.WithTransaction(func() {
-					t.Writer.Write(changeset.Operation, resultChangeset.Columns, resultChangeset.Values)
+					t.Writer.Write(resultChangeset)
 				})
 			}
 		}

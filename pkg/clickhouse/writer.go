@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"strings"
 	"text/template"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
@@ -18,7 +19,7 @@ type Writer struct {
 	currentLsnTable string
 	queryTemplate   *template.Template
 	conn            driver.Conn
-	maxQuerySize    uint64
+	maxQuerySize    int
 }
 
 func NewWriter(inputConnectionName string, writeQuery string, cfg config.Connection) *Writer {
@@ -64,16 +65,14 @@ func (w *Writer) GetCurrentPosition() uint64 {
 	return lsn
 }
 
-func (w *Writer) Write(operation uint8, columns []db.Column, values [][]any) {
-	if len(columns) == 0 || len(values) == 0 {
+func (w *Writer) Write(changeset *db.Changeset) {
+	if len(changeset.Columns) == 0 || len(changeset.Values) == 0 {
 		return
 	}
 
-	valuesLiteral, flatValues := makeValuesLiteral(columns, values)
-
 	tmplVars := map[string]string{
-		"operation": db.OperationStr(operation),
-		"rows":      valuesLiteral.String(),
+		"operation": db.OperationStr(changeset.Operation),
+		"rows":      "VALUES('', ) r", // need this to help calculations for maxQuerySize
 	}
 	sql := new(bytes.Buffer)
 	err := w.queryTemplate.Execute(sql, tmplVars)
@@ -81,33 +80,42 @@ func (w *Writer) Write(operation uint8, columns []db.Column, values [][]any) {
 		panic(err)
 	}
 
-	var valuesLen uint64
-	for _, arr := range values {
-		for _, v := range arr {
-			valuesLen += uint64(len(fmt.Sprintf("%v", v)))
-		}
+	typesLiteral := makeColumnTypesSql(changeset.Columns)
+	baseQuerySize := sql.Len() + typesLiteral.Len()
+	maxValuesListSize := w.getMaxQuerySize() - baseQuerySize
+
+	valuesList, flatValues := makeValuesList(changeset.Values, maxValuesListSize)
+
+	if len(flatValues) == len(changeset.Columns)*len(changeset.Values) {
+		// It fits in a single query, so let's use a VALUES list to insert
+		sb := strings.Builder{}
+		sb.WriteString("VALUES('")
+		sb.WriteString(typesLiteral.String())
+		sb.WriteString("', ")
+		sb.WriteString(valuesList.String())
+		sb.WriteString(") r")
+		tmplVars["rows"] = sb.String()
+	} else {
+		// Crap... we'll need to insert everything in batches to a temporary
+		// table, and the run out output.sql from that table...
+		flatValues = nil
+		tmplVars["rows"] = "r"
+		w.prepareTempTable(changeset, typesLiteral, maxValuesListSize)
+		defer w.conn.Exec(context.Background(), "DROP TABLE r")
 	}
 
+	sql = new(bytes.Buffer)
+	err = w.queryTemplate.Execute(sql, tmplVars)
+	if err != nil {
+		panic(err)
+	}
 	sqlStr := sql.String()
-	maxQuerySize := w.getMaxQuerySize()
-	if valuesLen+uint64(len(sqlStr)) > maxQuerySize {
-		log.Printf(
-			"[Clickhouse Writer] Query size bigger than Clickhouse max_query_size (%d > %d). Splitting into 2...",
-			valuesLen+uint64(len(sqlStr)),
-			maxQuerySize,
-		)
-
-		half := len(values) / 2
-		w.Write(operation, columns, values[:half])
-		w.Write(operation, columns, values[half:])
-		return
-	}
 
 	err = w.conn.Exec(context.Background(), sqlStr, flatValues...)
 	if err != nil {
 		log.Printf("[Clickhouse Writer] Error executing SQL:\n%s", sqlStr)
 		log.Printf("[Clickhouse Writer] Values:\n%v", flatValues)
-		log.Println("[Clickhouse Writer] SQL length / Values length: ", uint64(len(sqlStr)), " / ", valuesLen)
+		log.Println("[Clickhouse Writer] SQL length / Values length: ", uint64(len(sqlStr)), " / ", len(flatValues))
 		panic(err)
 	}
 }
@@ -127,13 +135,11 @@ func (w *Writer) Close() {
 	w.conn.Close()
 }
 
-func (w *Writer) getMaxQuerySize() uint64 {
+func (w *Writer) getMaxQuerySize() int {
 	if w.maxQuerySize == 0 {
 		row := w.conn.QueryRow(
 			context.Background(),
-			`SELECT value
-FROM system.settings
-WHERE name = 'max_query_size'`,
+			`SELECT value FROM system.settings WHERE name = 'max_query_size'`,
 		)
 
 		var strVal string
@@ -144,8 +150,52 @@ WHERE name = 'max_query_size'`,
 		if err != nil {
 			panic(err)
 		}
-		w.maxQuerySize = uint64(n)
+		w.maxQuerySize = int(n)
 	}
 
 	return w.maxQuerySize
+}
+
+func (w *Writer) prepareTempTable(changeset *db.Changeset, typesLiteral *strings.Builder, maxValuesListSize int) {
+	// Create temporary table to store the rows
+	sb := strings.Builder{}
+	sb.WriteString("CREATE TEMPORARY TABLE r (")
+	sb.WriteString(typesLiteral.String())
+	sb.WriteByte(')')
+
+	err := w.conn.Exec(context.Background(), sb.String())
+	if err != nil {
+		log.Printf("[Clickhouse Writer] Error executing SQL:\n%s", sb.String())
+		panic(err)
+	}
+
+	sb = strings.Builder{}
+	previousValuesLen := 0
+	for rowsDone := 0; rowsDone < len(changeset.Values); {
+		// TODO [PERFORMANCE] Is there a way to avoid rebuilding valuesList on every iteration?
+		valuesList, values := makeValuesList(changeset.Values, maxValuesListSize)
+
+		if sb.Len() == 0 || len(values) != previousValuesLen {
+			sb = strings.Builder{}
+			sb.WriteString("INSERT INTO r (")
+			for i, col := range changeset.Columns {
+				if i > 0 {
+					sb.WriteString(",")
+				}
+				sb.WriteString(col.Name)
+			}
+			sb.WriteString(") VALUES ")
+			sb.WriteString(valuesList.String())
+		}
+
+		previousValuesLen = len(values)
+		err = w.conn.Exec(context.Background(), sb.String(), values...)
+		if err != nil {
+			log.Printf("[Clickhouse Writer] Error inserting into temporary table:\n%s", sb.String())
+			log.Printf("[Clickhouse Writer] Values:\n%v", values)
+			panic(err)
+		}
+
+		rowsDone += len(values) / len(changeset.Columns)
+	}
 }

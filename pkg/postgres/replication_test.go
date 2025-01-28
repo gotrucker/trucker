@@ -240,7 +240,6 @@ VALUES (33, false, '2013-12-11', '193.137.213.0/24', '{"some": "thing"}', '2032-
 got: %v`, expectedInsertCols, change.Columns)
 		}
 
-		// TODO: Convert dates, datetimes, maps, ip addresses and arrays to the corresponding data types
 		expectedInsertValues := [][]any{{
 			json.Number("33"),
 			false,

@@ -33,6 +33,10 @@ func NewReader(readQuery string, cfg config.Connection) *Reader {
 }
 
 func (r *Reader) Read(changeset *db.Changeset) *db.Changeset {
+	if len(changeset.Columns) == 0 || len(changeset.Values) == 0 {
+		return nil
+	}
+
 	var rows pgx.Rows
 
 	// We need to hold on to a specific connection to be able to create and
@@ -44,11 +48,10 @@ func (r *Reader) Read(changeset *db.Changeset) *db.Changeset {
 	}
 	defer conn.Release()
 
-	if len(changeset.Columns) == 0 || len(changeset.Values) == 0 {
-		return nil
-	} else if len(changeset.Columns)*len(changeset.Values) > maxPreparedStatementArgs {
+	if len(changeset.Columns)*len(changeset.Values) > maxPreparedStatementArgs {
 		// Use a temporary table instead of a VALUES list in case we go over the
 		// maximum number of prepared statement arguments
+		log.Printf("[Postgres Reader] Need to query more than 32k values. Using temporary table for %d rows\n", len(changeset.Values))
 		rows = r.readUsingTempTable(conn, changeset)
 	} else {
 		rows = r.readUsingValuesList(changeset)
@@ -125,7 +128,7 @@ func (r *Reader) readUsingTempTable(conn *pgxpool.Conn, changeset *db.Changeset)
 	baseSql := fmt.Sprintf("INSERT INTO r (%s) VALUES ", strings.Join(columns, ","))
 	chunkSize := maxPreparedStatementArgs / len(changeset.Columns)
 
-	// TODO: We don't need to rebuild the string over and over again. We can reuse it for all of the chunks except the last one if that one's smaller.
+	// TODO [PERFORMANCE] We don't need to rebuild the string over and over again. We can reuse it for all of the chunks except the last one if that one's smaller.
 	for chunk := range slices.Chunk(changeset.Values, chunkSize) {
 		sb := strings.Builder{}
 		sb.WriteString(baseSql)
@@ -140,12 +143,7 @@ func (r *Reader) readUsingTempTable(conn *pgxpool.Conn, changeset *db.Changeset)
 				if j > 0 {
 					sb.WriteByte(',')
 				}
-
-				sb.WriteString(fmt.Sprintf(
-					"$%d", // "$%d::%s",
-					(i*len(columns))+j+1,
-					// dbTypeToPgType(changeset.Columns[j].Type)
-				))
+				sb.WriteString(fmt.Sprintf("$%d", (i*len(columns))+j+1))
 			}
 
 			sb.WriteByte(')')
@@ -157,7 +155,7 @@ func (r *Reader) readUsingTempTable(conn *pgxpool.Conn, changeset *db.Changeset)
 		}
 	}
 
-	// TODO: The code from here on is mostly the same as readUsingValuesLiteral. We should refactor this to avoid code duplication.
+	// TODO: The code from here on is mostly the same as readUsingValuesList. We should refactor this to avoid code duplication.
 	tmplVars := map[string]string{
 		"operation": db.OperationStr(changeset.Operation),
 		"rows":      "r",
