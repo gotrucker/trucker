@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log"
+	"strings"
 	"text/template"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -66,11 +68,7 @@ func (w *Writer) GetCurrentPosition() uint64 {
 	return lsn
 }
 
-func (w *Writer) Write(changeset *db.Changeset) {
-	if len(changeset.Columns) == 0 || len(changeset.Values) == 0 {
-		return
-	}
-
+func (w *Writer) Write(changeset *db.ChanChangeset) {
 	// We need to hold on to a specific connection to be able to create and
 	// access the temporary table until we're done (in case we're not using a
 	// VALUES list)
@@ -80,17 +78,25 @@ func (w *Writer) Write(changeset *db.Changeset) {
 	}
 	defer conn.Release()
 
-	// if len(changeset.Columns)*len(changeset.Values) > maxPreparedStatementArgs {
-	// 	w.writeUsingTempTable(conn, changeset)
-	// } else {
-	// 	w.writeUsingValuesList(conn, changeset)
-	// }
+	// FIXME: This will blow up memory on backfills of very large tables and/or
+	//        streaming very large transactions.
+	//        We need to look at the CH writer to get some inspiration to fix this.
+	rows := make([][]any, 0)
+	for rowBatch := range changeset.Rows {
+		rows = append(rows, rowBatch...)
+	}
 
-	valuesLiteral, flatValues := makeValuesLiteral(changeset.Columns, changeset.Values)
+	valuesLiteral, flatValues := makeValuesList(changeset.Columns, rows)
+	sb := strings.Builder{}
+	sb.WriteString("(VALUES ")
+	sb.WriteString(valuesLiteral.String())
+	sb.WriteString(") AS r (")
+	sb.WriteString(makeColumnsList(changeset.Columns).String())
+	sb.WriteByte(')')
 
 	tmplVars := map[string]string{
 		"operation": db.OperationStr(changeset.Operation),
-		"rows":      valuesLiteral.String(),
+		"rows":      sb.String(),
 	}
 	sql := new(bytes.Buffer)
 	err = w.queryTemplate.Execute(sql, tmplVars)
@@ -100,6 +106,7 @@ func (w *Writer) Write(changeset *db.Changeset) {
 
 	_, err = w.conn.Exec(context.Background(), sql.String(), flatValues...)
 	if err != nil {
+		log.Printf("[Postgres Writer] Error running query:\n%s\n", sql.String())
 		panic(err)
 	}
 }

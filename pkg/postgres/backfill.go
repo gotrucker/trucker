@@ -11,18 +11,10 @@ import (
 	"github.com/tonyfg/trucker/pkg/db"
 )
 
-// const backfillBatchSize = 50000
+const channelSize = 64
+const batchSize = 1024
 
-type BackfillBatch struct {
-	Columns []string
-	Types   []string
-	Rows    [][]any
-}
-
-func (rc *ReplicationClient) StreamBackfillData(table string, snapshotName string, readQuery string) (colsChan chan []db.Column, rowsChan chan [][]any) {
-	colsChan = make(chan []db.Column)
-	rowsChan = make(chan [][]any)
-
+func (rc *ReplicationClient) ReadBackfillData(table string, snapshotName string, readQuery string) *db.ChanChangeset {
 	var schema, tblName, nullFields string
 	schemaAndTable := strings.Split(table, ".")
 	if len(schemaAndTable) < 2 {
@@ -65,60 +57,71 @@ WHERE table_schema = $1
 	sql := new(bytes.Buffer)
 	err = tmpl.Execute(sql, tmplVars)
 
-	go func() {
-		defer close(colsChan)
-		defer close(rowsChan)
+	_, err = rc.conn.Exec(context.Background(), "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+	if err != nil {
+		panic(err)
+	}
 
-		_, err := rc.conn.Exec(context.Background(), "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ")
-		if err != nil {
-			panic(err)
+	_, err = rc.conn.Exec(context.Background(), fmt.Sprintf("SET TRANSACTION SNAPSHOT '%s'", snapshotName))
+	if err != nil {
+		panic(err)
+	}
+
+	rows, err := rc.conn.Query(context.Background(), sql.String())
+	if err != nil {
+		log.Printf("[Postgres Backfiller] Error running query:\n%s\n", sql.String())
+		panic(err)
+	}
+
+	fields := rows.FieldDescriptions()
+	columns := make([]db.Column, len(fields))
+	for i, field := range fields {
+		columns[i] = db.Column{
+			Name: field.Name,
+			Type: oidToDbType(field.DataTypeOID),
 		}
+	}
+
+	rowChan := make(chan [][]any, channelSize)
+
+	// TODO This go routine is basically the same between reader and backfill. Refactor to avoid dups
+	go func() {
 		defer func() {
 			_, err := rc.conn.Exec(context.Background(), "ROLLBACK")
 			if err != nil {
 				panic(err)
 			}
 		}()
-
-		_, err = rc.conn.Exec(context.Background(), fmt.Sprintf("SET TRANSACTION SNAPSHOT '%s'", snapshotName))
-		if err != nil {
-			panic(err)
-		}
-
-		rows, err := rc.conn.Query(context.Background(), sql.String())
-		if err != nil {
-			log.Printf("[Postgres Backfiller] Error running query:\n%s\n", sql.String())
-			panic(err)
-		}
 		defer rows.Close()
+		defer func() {
+			close(rowChan)
+		}()
 
-		fields := rows.FieldDescriptions()
-		columns := make([]db.Column, len(fields))
-		for i, field := range fields {
-			columns[i] = db.Column{
-				Name: field.Name,
-				Type: oidToDbType(field.DataTypeOID),
-			}
-		}
-		colsChan <- columns
+		rowBatch := make([][]any, 0, batchSize)
 
-		rowValues := make([][]any, 0, 1)
-		for i := 0; rows.Next(); i++ {
-			values, err := rows.Values()
+		for rows.Next() {
+			row, err := rows.Values()
 			if err != nil {
 				panic(err)
 			}
-			rowValues = append(rowValues, values)
 
-			// if i >= backfillBatchSize {
-			// 	rowsChan <- rowValues
-			// 	rowValues = make([][]any, 0, len(rowValues))
-			// 	i = 0
-			// }
+			rowBatch = append(rowBatch, row)
+
+			if len(rowBatch) == batchSize {
+				rowChan <- rowBatch
+				rowBatch = make([][]any, 0, batchSize)
+			}
 		}
 
-		rowsChan <- rowValues
+		if len(rowBatch) > 0 {
+			rowChan <- rowBatch
+		}
 	}()
 
-	return colsChan, rowsChan
+	return &db.ChanChangeset{
+		Operation: db.Insert,
+		Table:     table,
+		Columns:   columns,
+		Rows:      rowChan,
+	}
 }

@@ -90,8 +90,8 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 
 	startLSN := pglogrepl.LSN(startPosition)
 	endLSN := pglogrepl.LSN(endPosition)
-	fmt.Println("Replicating startLSN:", startPosition, startLSN)
-	fmt.Println("Replicating endLSN:", endPosition, endLSN)
+	log.Println("Replicating startLSN:", startPosition, startLSN)
+	log.Println("Replicating endLSN:", endPosition, endLSN)
 
 	conn := rc.streamConn.PgConn()
 
@@ -117,8 +117,6 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 		standbyMessageTimeout := time.Second * 10
 		nextStandbyMessageDeadline := time.Now().Add(standbyMessageTimeout)
 
-		fmt.Printf("Starting loop! %v\n", rc.running)
-
 	Out:
 		for {
 			select {
@@ -139,7 +137,7 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 				if err != nil {
 					log.Fatalln("SendStandbyStatusUpdate failed:", err)
 				}
-				log.Printf("Sent Standby status message at %s\n", clientXLogPos.String())
+				// log.Printf("Sent Standby status message at %s\n", clientXLogPos.String())
 				nextStandbyMessageDeadline = time.Now().Add(standbyMessageTimeout)
 			}
 
@@ -204,7 +202,7 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 			}
 		}
 
-		fmt.Println("Replication stream exiting...")
+		log.Println("Replication stream exiting...")
 		rc.streamConn.Close(context.Background())
 		close(changes)
 		rc.Close()
@@ -316,15 +314,15 @@ func (rc *ReplicationClient) setupReplicationSlot(createBackfillSnapshot bool) (
 	var backfillLSN pglogrepl.LSN
 
 	if slotCount < 1 {
-		fmt.Println("Replication slot doesn't exit yet. Creating...")
+		log.Println("Replication slot doesn't exit yet. Creating...")
 		backfillLSN = rc.identifySystem().XLogPos
 		snapshotName = rc.createReplicationSlot(false)
 	} else if createBackfillSnapshot {
-		fmt.Println("Replication slot already exists. Creating temporary slot for backfill...")
+		log.Println("Replication slot already exists. Creating temporary slot for backfill...")
 		backfillLSN = rc.identifySystem().XLogPos
 		snapshotName = rc.createReplicationSlot(true)
 	} else {
-		fmt.Println("Replication slot already exists and no backfill needed... Getting current LSN")
+		log.Println("Replication slot already exists and no backfill needed... Getting current LSN")
 		row := rc.query1(
 			"select restart_lsn from pg_replication_slots where slot_name = $1 and database = $2;",
 			rc.publicationName,

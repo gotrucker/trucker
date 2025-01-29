@@ -83,8 +83,8 @@ func TestStart(t *testing.T) {
 		}
 
 		expectedInsertValues := [][]any{{json.Number("6"), "Jamaica", nil, nil}}
-		if !reflect.DeepEqual(change.Values, expectedInsertValues) {
-			t.Errorf("Expected Values to be %v but got %v", expectedInsertValues, change.Values)
+		if !reflect.DeepEqual(change.Rows, expectedInsertValues) {
+			t.Errorf("Expected Values to be %v but got %v", expectedInsertValues, change.Rows)
 		}
 	case <-time.After(1000 * time.Millisecond):
 		t.Error("Reading from replication stream took too long...")
@@ -128,8 +128,8 @@ func TestStart(t *testing.T) {
 		}
 
 		expectedUpdateValues := [][]any{{json.Number("6"), "Jameca", json.Number("6"), "Jamaica"}}
-		if !reflect.DeepEqual(change.Values, expectedUpdateValues) {
-			t.Errorf("Expected Values to be %v but got %v", expectedUpdateValues, change.Values)
+		if !reflect.DeepEqual(change.Rows, expectedUpdateValues) {
+			t.Errorf("Expected Values to be %v but got %v", expectedUpdateValues, change.Rows)
 		}
 	case <-time.After(1000 * time.Millisecond):
 		t.Error("Reading from replication stream took too long...")
@@ -173,8 +173,8 @@ func TestStart(t *testing.T) {
 		}
 
 		expectedDeleteValues := [][]any{{nil, nil, json.Number("6"), "Jameca"}}
-		if !reflect.DeepEqual(change.Values, expectedDeleteValues) {
-			t.Errorf("Expected Values to be %v but got %v", expectedDeleteValues, change.Values)
+		if !reflect.DeepEqual(change.Rows, expectedDeleteValues) {
+			t.Errorf("Expected Values to be %v but got %v", expectedDeleteValues, change.Rows)
 		}
 	case <-time.After(1000 * time.Millisecond):
 		t.Error("Reading from replication stream took too long...")
@@ -250,8 +250,8 @@ got: %v`, expectedInsertCols, change.Columns)
 			`{yo,yo,ma}`,
 			nil, nil, nil, nil, nil, nil, nil,
 		}}
-		if !reflect.DeepEqual(change.Values, expectedInsertValues) {
-			t.Errorf("Expected Values to be %v but got %v", expectedInsertValues, change.Values)
+		if !reflect.DeepEqual(change.Rows, expectedInsertValues) {
+			t.Errorf("Expected Values to be %v but got %v", expectedInsertValues, change.Rows)
 		}
 	case <-time.After(1000 * time.Millisecond):
 		t.Error("Reading from replication stream took too long...")

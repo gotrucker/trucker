@@ -48,39 +48,19 @@ func NewTruck(cfg config.Truck, rc *postgres.ReplicationClient, connCfgs map[str
 func (t *Truck) Backfill(snapshotName string, targetLSN uint64) {
 	start := time.Now()
 	log.Printf("[Truck %s] Running backfill...\n", t.Name)
-	colsChan, rowsChan := t.ReplicationClient.StreamBackfillData(t.InputTable, snapshotName, t.readQuery)
+	changeset := t.ReplicationClient.ReadBackfillData(t.InputTable, snapshotName, t.readQuery)
+	t.Writer.Write(changeset)
 
-	cols := <-colsChan
-
-	for {
-		rows := <-rowsChan
-		if rows == nil || len(rows) == 0 {
-			curPos := t.Writer.GetCurrentPosition()
-			if curPos == 0 {
-				t.Writer.SetupPositionTracking()
-				t.Writer.SetCurrentPosition(targetLSN)
-				t.CurrentPosition = targetLSN
-			} else {
-				t.CurrentPosition = curPos
-			}
-
-			log.Printf("[Truck %s] Backfill complete in %f seconds!\n", t.Name, time.Since(start).Seconds())
-			break
-		}
-
-		log.Printf("Backfilling %d rows...\n", len(rows))
-		if len(rows) > 0 {
-			changeset := &db.Changeset{
-				Operation: db.Insert,
-				Table:     t.InputTable,
-				Columns:   cols,
-				Values:    rows,
-			}
-			t.Writer.Write(changeset)
-		} else {
-			log.Printf("Empty row batch after read query... Skipping\n")
-		}
+	curPos := t.Writer.GetCurrentPosition()
+	if curPos == 0 {
+		t.Writer.SetupPositionTracking()
+		t.Writer.SetCurrentPosition(targetLSN)
+		t.CurrentPosition = targetLSN
+	} else {
+		t.CurrentPosition = curPos
 	}
+
+	log.Printf("[Truck %s] Backfill complete in %f seconds!\n", t.Name, time.Since(start).Seconds())
 }
 
 func (t *Truck) Start() {

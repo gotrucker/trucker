@@ -22,7 +22,7 @@ JOIN public.whisky_types t ON r.whisky_type_id = t.id
 JOIN public.countries c ON c.id = t.country_id
 ORDER BY r.id`
 
-func TestStreamBackfillReadAndWrite(t *testing.T) {
+func TestBackfillReplicationReadAndWrite(t *testing.T) {
 	pgConn := helpers.PreparePostgresTestDb()
 	defer pgConn.Close(context.Background())
 	chConn := helpers.PrepareClickhouseTestDb()
@@ -59,20 +59,24 @@ GROUP BY id`,
 		t.Error(err)
 	}
 
-	colChan, rowChan := rc.StreamBackfillData("public.whiskies", snapshotName, readQuery)
-	cols := <-colChan
+	changeset := rc.ReadBackfillData("public.whiskies", snapshotName, readQuery)
+	cols := changeset.Columns
 
 	for {
-		rows := <-rowChan
+		rows := <-changeset.Rows
 		if rows == nil || len(rows) == 0 {
 			break
 		}
 
-		changeset := &db.Changeset{
+		rowChan := make(chan [][]any, 1)
+		rowChan <- rows
+		close(rowChan)
+
+		changeset := &db.ChanChangeset{
 			Operation: db.Insert,
 			Table:     "public.whiskies",
 			Columns:   cols,
-			Values:    rows,
+			Rows:      rowChan,
 		}
 		w.WithTransaction(func() { w.Write(changeset) })
 	}
@@ -98,7 +102,7 @@ got %T %v`, expectedColumns, expectedColumns, columns, columns)
 got %T %v`, expectedRows, expectedRows, rows, rows)
 	}
 
-	fmt.Println("Snapshot LSN", pglogrepl.LSN(snapshotLsn))
+	log.Println("Snapshot LSN", pglogrepl.LSN(snapshotLsn))
 	// Now let's stream Jack Daniels
 	streamChan := rc.Start(snapshotLsn, 0)
 	processedChangeset := false

@@ -42,70 +42,60 @@ func makeChangesets(wal2jsonChanges []byte, columnsCache map[string][]db.Column)
 		log.Fatalf("Failed to unmarshal wal2json payload: %v\n", err)
 	}
 
-	changesets := make([]map[string]*db.Changeset, 3)
-
 	return func(yield func(*db.Changeset) bool) {
+		var changeset *db.Changeset = nil
+
 		for _, change := range data.Changes {
 			table := fmt.Sprintf("%s.%s", change.Schema, change.Table)
-
-			var operation uint8
-			switch change.Kind {
-			case "insert":
-				operation = db.Insert
-			case "update":
-				operation = db.Update
-			case "delete":
-				operation = db.Delete
-			default:
-				log.Fatalf("Unknown operation: %s\n", change.Kind)
-			}
-
-			if changesets[operation] == nil {
-				changesets[operation] = make(map[string]*db.Changeset)
-			}
-			operationChangesets := changesets[operation]
-
-			if _, ok := operationChangesets[table]; !ok {
-				operationChangesets[table] = &db.Changeset{
-					Table:     table,
-					Operation: operation,
-					Columns:   changesetCols(columnsCache[table]),
-				}
-			}
-			changeset := operationChangesets[table]
-
 			tableCols := columnsCache[table]
 			numCols := len(tableCols)
-			values := make([]any, numCols*2)
+
+			if changeset == nil || table != changeset.Table {
+				if changeset != nil {
+					if !yield(changeset) {
+						return
+					}
+				}
+
+				var operation uint8
+				switch change.Kind {
+				case "insert":
+					operation = db.Insert
+				case "update":
+					operation = db.Update
+				case "delete":
+					operation = db.Delete
+				default:
+					log.Fatalf("Unknown operation: %s\n", change.Kind)
+				}
+
+				changeset = &db.Changeset{
+					Table:     table,
+					Operation: operation,
+					Columns:   changesetCols(tableCols),
+					Rows:      make([][]any, 0, 1),
+				}
+			}
+
+			row := make([]any, numCols*2)
 
 			for i, col := range tableCols {
 				valueIdx := slices.Index(change.ColumnNames, col.Name)
 				if valueIdx > -1 {
-					values[i] = change.ColumnValues[i]
+					row[i] = change.ColumnValues[i]
 				}
 
 				oldValueIdx := slices.Index(change.OldKeys.KeyNames, col.Name)
 				if oldValueIdx > -1 {
-					values[i+numCols] = change.OldKeys.KeyValues[oldValueIdx]
+					row[i+numCols] = change.OldKeys.KeyValues[oldValueIdx]
 				}
 			}
 
-			changeset.Values = append(changeset.Values, values)
-
-			if len(changeset.Columns)*len(changeset.Values) >= maxPreparedStatementArgs-len(changeset.Columns) {
-				if !yield(changeset) {
-					return
-				}
-				delete(changesets[operation], table)
-			}
+			changeset.Rows = append(changeset.Rows, row)
 		}
 
-		for _, operationChangesets := range changesets {
-			for _, changeset := range operationChangesets {
-				if !yield(changeset) {
-					return
-				}
-			}
+		if changeset != nil && !yield(changeset) {
+			return
 		}
 	}
 }
@@ -119,10 +109,25 @@ func changesetCols(columns []db.Column) []db.Column {
 	return cols
 }
 
-func makeValuesLiteral(columns []db.Column, rows [][]any) (valuesLiteral *strings.Builder, values []any) {
-	values = make([]any, 0, len(columns)*len(rows))
+func makeColumnsList(columns []db.Column) (columnsLiteral *strings.Builder) {
 	var sb strings.Builder
-	sb.WriteString("(VALUES ")
+
+	for i, col := range columns {
+		if i > 0 {
+			sb.WriteByte(',')
+		}
+		sb.WriteString(fmt.Sprintf(`"%s"`, col.Name))
+	}
+
+	return &sb
+}
+
+func makeValuesList(columns []db.Column, rows [][]any) (valuesList *strings.Builder, values []any) {
+	var sb strings.Builder
+	values = make([]any, 0)
+
+	numCols := len(columns)
+	maxRows := (maxPreparedStatementArgs / numCols) - 1
 
 	for i, row := range rows {
 		if i > 0 {
@@ -130,30 +135,25 @@ func makeValuesLiteral(columns []db.Column, rows [][]any) (valuesLiteral *string
 		}
 		sb.WriteByte('(')
 
-		for j := range len(columns) {
+		for j := range numCols {
 			if j > 0 {
 				sb.WriteByte(',')
 			}
 
 			sb.WriteString(fmt.Sprintf(
 				"$%d::%s",
-				(i*len(row))+j+1,
+				(i*numCols)+j+1,
 				dbTypeToPgType(columns[j].Type),
 			))
 		}
 
 		values = append(values, row...)
 		sb.WriteByte(')')
-	}
 
-	sb.WriteString(") AS r (")
-	for i, col := range columns {
-		if i > 0 {
-			sb.WriteByte(',')
+		if i >= maxRows {
+			break
 		}
-		sb.WriteString(fmt.Sprintf(`"%s"`, col.Name))
 	}
-	sb.WriteByte(')')
 
 	return &sb, values
 }

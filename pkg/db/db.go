@@ -1,8 +1,6 @@
 package db
 
-import (
-	"fmt"
-)
+import "fmt"
 
 const (
 	Insert uint8 = iota
@@ -19,11 +17,18 @@ type Changeset struct {
 	Table     string
 	Operation uint8 // Insert, Update, or Delete
 	Columns   []Column
-	Values    [][]any
+	Rows      [][]any
+}
+
+type ChanChangeset struct {
+	Table     string
+	Operation uint8 // Insert, Update, or Delete
+	Columns   []Column
+	Rows      chan [][]any
 }
 
 type Reader interface {
-	Read(changeset *Changeset) *Changeset
+	Read(changeset *Changeset) *ChanChangeset
 	Close()
 }
 
@@ -31,7 +36,7 @@ type Writer interface {
 	SetupPositionTracking()
 	SetCurrentPosition(lsn uint64)
 	GetCurrentPosition() uint64
-	Write(changeset *Changeset)
+	Write(changeset *ChanChangeset)
 	TruncateTable(table string)
 	WithTransaction(f func())
 	Close()

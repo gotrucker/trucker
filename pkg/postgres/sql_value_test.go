@@ -72,10 +72,10 @@ got %v`,
 		{json.Number("4"), "b", json.Number("15"), json.Number("2"), nil, nil, nil, nil},
 		{json.Number("5"), "c", json.Number("18"), json.Number("3"), nil, nil, nil, nil},
 	}
-	if !reflect.DeepEqual(change1.Values, expectedInsertVals) {
+	if !reflect.DeepEqual(change1.Rows, expectedInsertVals) {
 		t.Errorf(`Expected InsertValues to be
     %v
-got %v`, expectedInsertVals, change1.Values)
+got %v`, expectedInsertVals, change1.Rows)
 	}
 
 	change2 := changesets[1]
@@ -97,10 +97,10 @@ got %v`,
 		{json.Number("1"), "boda1", json.Number("15"), json.Number("4"), json.Number("1"), "Glenfiddich", json.Number("15"), json.Number("4")},
 		{json.Number("5"), "boda5", json.Number("18"), json.Number("3"), json.Number("5"), "c", json.Number("18"), json.Number("3")},
 	}
-	if !reflect.DeepEqual(change2.Values, expectedUpdateVals) {
+	if !reflect.DeepEqual(change2.Rows, expectedUpdateVals) {
 		t.Errorf(`Expected UpdateValues to be
     %v
-got %v`, expectedUpdateVals, change2.Values)
+got %v`, expectedUpdateVals, change2.Rows)
 	}
 
 	change3 := changesets[2]
@@ -122,9 +122,9 @@ got %v`,
 		{nil, nil, nil, nil, json.Number("1"), "boda1", json.Number("15"), json.Number("4")},
 		{nil, nil, nil, nil, json.Number("3"), "boda3", json.Number("12"), json.Number("1")},
 	}
-	if !reflect.DeepEqual(change3.Values, expectedDeleteVals) {
+	if !reflect.DeepEqual(change3.Rows, expectedDeleteVals) {
 		t.Errorf(`Expected DeleteValues to be
     %v
-got %v`, expectedDeleteVals, change3.Values)
+got %v`, expectedDeleteVals, change3.Rows)
 	}
 }

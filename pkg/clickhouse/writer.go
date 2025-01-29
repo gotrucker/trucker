@@ -65,11 +65,7 @@ func (w *Writer) GetCurrentPosition() uint64 {
 	return lsn
 }
 
-func (w *Writer) Write(changeset *db.Changeset) {
-	if len(changeset.Columns) == 0 || len(changeset.Values) == 0 {
-		return
-	}
-
+func (w *Writer) Write(changeset *db.ChanChangeset) {
 	tmplVars := map[string]string{
 		"operation": db.OperationStr(changeset.Operation),
 		"rows":      "VALUES('', ) r", // need this to help calculations for maxQuerySize
@@ -84,9 +80,18 @@ func (w *Writer) Write(changeset *db.Changeset) {
 	baseQuerySize := sql.Len() + typesLiteral.Len()
 	maxValuesListSize := w.getMaxQuerySize() - baseQuerySize
 
-	valuesList, flatValues := makeValuesList(changeset.Values, maxValuesListSize)
+	valuesList, flatValues, excessRows := makeValuesList(changeset.Rows, maxValuesListSize, [][]any{})
 
-	if len(flatValues) == len(changeset.Columns)*len(changeset.Values) {
+	if len(flatValues) == 0 {
+		return
+	} else if excessRows != nil && len(excessRows) > 0 {
+		// Crap... we'll need to insert everything in batches to a temporary
+		// table, and the run out output.sql from that table...
+		w.prepareTempTable(changeset, valuesList, flatValues, excessRows, typesLiteral, maxValuesListSize)
+		defer w.conn.Exec(context.Background(), "DROP TABLE r")
+		flatValues = nil
+		tmplVars["rows"] = "r"
+	} else {
 		// It fits in a single query, so let's use a VALUES list to insert
 		sb := strings.Builder{}
 		sb.WriteString("VALUES('")
@@ -95,13 +100,6 @@ func (w *Writer) Write(changeset *db.Changeset) {
 		sb.WriteString(valuesList.String())
 		sb.WriteString(") r")
 		tmplVars["rows"] = sb.String()
-	} else {
-		// Crap... we'll need to insert everything in batches to a temporary
-		// table, and the run out output.sql from that table...
-		flatValues = nil
-		tmplVars["rows"] = "r"
-		w.prepareTempTable(changeset, typesLiteral, maxValuesListSize)
-		defer w.conn.Exec(context.Background(), "DROP TABLE r")
 	}
 
 	sql = new(bytes.Buffer)
@@ -114,7 +112,9 @@ func (w *Writer) Write(changeset *db.Changeset) {
 	err = w.conn.Exec(context.Background(), sqlStr, flatValues...)
 	if err != nil {
 		log.Printf("[Clickhouse Writer] Error executing SQL:\n%s", sqlStr)
-		log.Printf("[Clickhouse Writer] Values:\n%v", flatValues)
+		for i, val := range flatValues {
+			log.Printf("[Clickhouse Writer] Val: %d = %v\n", i+1, val)
+		}
 		log.Println("[Clickhouse Writer] SQL length / Values length: ", uint64(len(sqlStr)), " / ", len(flatValues))
 		panic(err)
 	}
@@ -156,7 +156,7 @@ func (w *Writer) getMaxQuerySize() int {
 	return w.maxQuerySize
 }
 
-func (w *Writer) prepareTempTable(changeset *db.Changeset, typesLiteral *strings.Builder, maxValuesListSize int) {
+func (w *Writer) prepareTempTable(changeset *db.ChanChangeset, valuesList *strings.Builder, flatValues []any, extraRows [][]any, typesLiteral *strings.Builder, maxValuesListSize int) {
 	// Create temporary table to store the rows
 	sb := strings.Builder{}
 	sb.WriteString("CREATE TEMPORARY TABLE r (")
@@ -171,11 +171,9 @@ func (w *Writer) prepareTempTable(changeset *db.Changeset, typesLiteral *strings
 
 	sb = strings.Builder{}
 	previousValuesLen := 0
-	for rowsDone := 0; rowsDone < len(changeset.Values); {
-		// TODO [PERFORMANCE] Is there a way to avoid rebuilding valuesList on every iteration?
-		valuesList, values := makeValuesList(changeset.Values, maxValuesListSize)
 
-		if sb.Len() == 0 || len(values) != previousValuesLen {
+	for {
+		if sb.Len() == 0 || len(flatValues) != previousValuesLen {
 			sb = strings.Builder{}
 			sb.WriteString("INSERT INTO r (")
 			for i, col := range changeset.Columns {
@@ -188,14 +186,19 @@ func (w *Writer) prepareTempTable(changeset *db.Changeset, typesLiteral *strings
 			sb.WriteString(valuesList.String())
 		}
 
-		previousValuesLen = len(values)
-		err = w.conn.Exec(context.Background(), sb.String(), values...)
+		previousValuesLen = len(flatValues)
+		err = w.conn.Exec(context.Background(), sb.String(), flatValues...)
 		if err != nil {
 			log.Printf("[Clickhouse Writer] Error inserting into temporary table:\n%s", sb.String())
-			log.Printf("[Clickhouse Writer] Values:\n%v", values)
+			log.Printf("[Clickhouse Writer] Values:\n%v", flatValues)
 			panic(err)
 		}
 
-		rowsDone += len(values) / len(changeset.Columns)
+		// TODO [PERFORMANCE] Is there a way to avoid rebuilding valuesList on every iteration?
+		valuesList, flatValues, extraRows = makeValuesList(changeset.Rows, maxValuesListSize, extraRows)
+
+		if len(flatValues) == 0 {
+			break
+		}
 	}
 }

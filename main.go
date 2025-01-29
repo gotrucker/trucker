@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -102,7 +101,7 @@ func backfill(replicationClients map[string]*postgres.ReplicationClient, trucks 
 	for connName, rc := range replicationClients {
 		tablesToBackfill, backfillLSN, snapshotName := rc.Setup()
 		defer rc.ResetStreamConn()
-		fmt.Println("Backfill LSN", pglogrepl.LSN(backfillLSN))
+		log.Println("Backfill LSN", pglogrepl.LSN(backfillLSN))
 
 		backfillLSNs[connName] = backfillLSN
 		backfilledTables[connName] = tablesToBackfill
@@ -125,9 +124,9 @@ func catchup(replicationClients map[string]*postgres.ReplicationClient, trucks m
 
 		for _, truck := range trucks[connName] {
 			if slices.Contains(skipTables[connName], truck.InputTable) {
-				fmt.Printf("Skipping catchup for truck '%s' because we just finished backfilling it...\n", truck.Name)
 				continue
 			}
+			log.Printf("[Truck %s] Catching up to latest stream position...\n", truck.Name)
 
 			truckLSN := truck.Writer.GetCurrentPosition()
 			if truckLSN < startLSN || startLSN == 0 {
