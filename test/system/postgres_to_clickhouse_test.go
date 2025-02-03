@@ -2,35 +2,25 @@ package main
 
 import (
 	"context"
-	"os"
-	"path/filepath"
-	"runtime"
+	"fmt"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/tonyfg/trucker/test/helpers"
 )
 
-var (
-	_, b, _, _ = runtime.Caller(0)
-	Basepath   = filepath.Dir(b)
-)
-
-func TestDoTheThing(t *testing.T) {
+func TestPostgresToClickhouse(t *testing.T) {
 	pgConn := helpers.PreparePostgresTestDb()
 	defer pgConn.Close(context.Background())
 	chConn := helpers.PrepareClickhouseTestDb()
 	defer chConn.Close()
 
-	err := os.Chdir("test/fixtures/fake_project")
-	if err != nil {
-		t.Error(err)
-	}
+	exitChan := startTrucker("postgres_to_clickhouse")
 
-	go doTheThing(Basepath + "/test/fixtures/fake_project")
-
-	i := 0
-	for {
+	// Test backfill
+	for i := 0;; i++ {
 		var cnt uint64
 		row := chConn.QueryRow(context.Background(), "SELECT count(*) FROM trucker.v_whiskies_flat")
 		row.Scan(&cnt)
@@ -43,14 +33,11 @@ func TestDoTheThing(t *testing.T) {
 		}
 
 		time.Sleep(300 * time.Millisecond)
-		i += 1
 	}
 
 	// Test inserts
 	pgConn.Exec(context.Background(), "INSERT INTO public.whiskies (name, age, whisky_type_id) VALUES ('Jack Daniels', 5, 1)")
-
-	i = 0
-	for {
+	for i := 0;; i++ {
 		var cnt uint64
 		row := chConn.QueryRow(context.Background(), "SELECT count(*) FROM trucker.v_whiskies_flat")
 		row.Scan(&cnt)
@@ -63,14 +50,11 @@ func TestDoTheThing(t *testing.T) {
 		}
 
 		time.Sleep(300 * time.Millisecond)
-		i += 1
 	}
 
 	// Test updates
 	pgConn.Exec(context.Background(), "UPDATE public.whiskies SET age = 7, name = 'Jack Daniels 2' WHERE name = 'Jack Daniels'")
-
-	i = 0
-	for {
+	for i := 0;; i++ {
 		var cnt uint64
 		row := chConn.QueryRow(context.Background(), "SELECT count(*) FROM trucker.v_whiskies_flat WHERE name = 'Jack Daniels 2'")
 		row.Scan(&cnt)
@@ -83,9 +67,9 @@ func TestDoTheThing(t *testing.T) {
 		}
 
 		time.Sleep(500 * time.Millisecond)
-		i += 1
 	}
 
+	// Check row we inserted/updated for correct data
 	var id, age int32
 	var typeName, country string
 	row := chConn.QueryRow(context.Background(), "SELECT id, age, type, country FROM trucker.v_whiskies_flat WHERE name = 'Jack Daniels 2'")
@@ -97,11 +81,9 @@ func TestDoTheThing(t *testing.T) {
 
 	// Test deletes
 	pgConn.Exec(context.Background(), "DELETE FROM public.whiskies WHERE name = 'Jack Daniels 2'")
-
-	i = 0
-	for {
+	for i := 0;; i++ {
 		var cnt uint64
-		row := chConn.QueryRow(context.Background(), "SELECT count(*) FROM trucker.v_whiskies_flat WHERE id = $1 AND country IS NULL", id)
+		row := chConn.QueryRow(context.Background(), "SELECT count(*) FROM trucker.v_whiskies_flat WHERE id = $1 AND country = ''", id)
 		row.Scan(&cnt)
 
 		if cnt == 1 {
@@ -112,7 +94,6 @@ func TestDoTheThing(t *testing.T) {
 		}
 
 		time.Sleep(300 * time.Millisecond)
-		i += 1
 	}
 
 	row = chConn.QueryRow(context.Background(), "SELECT name, age, type, country FROM trucker.v_whiskies_flat WHERE id = $1", id)
@@ -125,4 +106,79 @@ func TestDoTheThing(t *testing.T) {
 		t.Error("Expected Jack Daniels to have been emptied out, but got values:", name, age, typeName, country)
 	}
 
+	close(exitChan)
 }
+
+func TestPostgresToClickhouseLarge(t *testing.T) {
+	pgConn := helpers.PreparePostgresTestDb()
+	defer pgConn.Close(context.Background())
+	chConn := helpers.PrepareClickhouseTestDb()
+	defer chConn.Close()
+
+	insertValues := strings.Builder{}
+	insertValues.WriteString("INSERT INTO whiskies (name, age, whisky_type_id) VALUES ('Blargh', 1, 1)")
+	for i := 0; i < 15000; i++ {
+		insertValues.WriteString(fmt.Sprintf(",('whisky_%d',1,2)", i))
+	}
+	_, err := pgConn.Exec(context.Background(), insertValues.String())
+	if err != nil {
+		t.Error("Couldn't insert 15k rows... ", err)
+	}
+
+	exitChan := startTrucker("postgres_to_clickhouse")
+
+	// Test backfill
+	for i := 0;; i++ {
+		var cnt uint64
+		row := chConn.QueryRow(context.Background(), "SELECT count(*) FROM trucker.v_whiskies_flat")
+		row.Scan(&cnt)
+
+		if cnt == 15005 {
+			break
+		} else if i > 10 {
+			t.Error("Expected 15005 rows in whiskies_flat but found ", cnt)
+			break
+		}
+
+		time.Sleep(300 * time.Millisecond)
+	}
+
+	// Test updates
+	pgConn.Exec(context.Background(), "UPDATE public.whiskies SET age = 77")
+	for i := 0;; i++ {
+		rows, err := chConn.Query(context.Background(), "SELECT age::UInt64, count(*) FROM trucker.v_whiskies_flat GROUP BY age ORDER BY age")
+		if err != nil {
+			t.Error("Couldn't query Clickhouse... ", err)
+		}
+
+		allRows := make([][]uint64, 0)
+		for rows.Next() {
+			var age, cnt uint64
+			rows.Scan(&age, &cnt)
+			allRows = append(allRows, []uint64{age, cnt})
+		}
+		rows.Close()
+
+		expectedResult := [][]uint64{
+			{120, 1},
+			{124, 1},
+			{130, 1},
+			{134, 1},
+			{152, 15001},
+		}
+
+		if reflect.DeepEqual(allRows, expectedResult) {
+			break
+		} else if i > 10 {
+			t.Errorf(`Expected age distribution:
+        %v
+but got %v: `, expectedResult, allRows)
+			break
+		}
+
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	close(exitChan)
+}
+

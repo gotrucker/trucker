@@ -75,7 +75,9 @@ func (t *Truck) Start() {
 			select {
 			case <-t.KillChan:
 				log.Printf("[Truck %s] Received kill msg. Exiting...\n", t.Name)
-				close(t.KillChan)
+				t.ReplicationClient.Close()
+				t.Reader.Close()
+				t.Writer.Close()
 				close(t.ChangesChan)
 				return
 			case changeset := <-t.ChangesChan:

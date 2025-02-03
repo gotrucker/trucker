@@ -25,8 +25,7 @@ func TestStreamBackfillData(t *testing.T) {
 		t.Error(err)
 	}
 
-	colChan, rowChan := rc.StreamBackfillData("public.countries", snapshotName, "SELECT * FROM {{ .rows }}")
-	cols := <-colChan
+	changeset := rc.ReadBackfillData("public.countries", snapshotName, "SELECT * FROM {{ .rows }}")
 
 	expectedInsertCols := []db.Column{
 		{Name: "id", Type: db.Int32},
@@ -34,12 +33,12 @@ func TestStreamBackfillData(t *testing.T) {
 		{Name: "old__id", Type: db.Int32},
 		{Name: "old__name", Type: db.String},
 	}
-	if !reflect.DeepEqual(cols, expectedInsertCols) {
-		t.Errorf("Expected InsertCols to be %v but got %v", expectedInsertCols, cols)
+	if !reflect.DeepEqual(changeset.Columns, expectedInsertCols) {
+		t.Errorf("Expected InsertCols to be %v but got %v", expectedInsertCols, changeset.Columns)
 	}
 
 	select {
-	case rows := <-rowChan:
+	case rows := <-changeset.Rows:
 		expectedValues := [][]any{
 			{int32(1), "Portugal", nil, nil},
 			{int32(2), "Scotland", nil, nil},
@@ -55,7 +54,7 @@ func TestStreamBackfillData(t *testing.T) {
 	}
 
 	select {
-	case rows := <-rowChan:
+	case rows := <-changeset.Rows:
 		if rows != nil {
 			t.Error("Expected the channel to be closed, but got", rows)
 		}

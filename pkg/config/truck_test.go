@@ -13,12 +13,12 @@ func TestLoadTrucks(t *testing.T) {
 	}
 
 	trucks := LoadTrucks(
-		"../../test/fixtures/fake_project",
+		"../../test/fixtures/projects/postgres_to_clickhouse",
 		globalCfg,
 	)
 
-	if len(trucks) != 2 {
-		t.Error("Expected 2 trucks, got", len(trucks))
+	if len(trucks) != 1 {
+		t.Error("Expected 1 trucks, got", len(trucks))
 	}
 
 	truck := trucks[0]
@@ -35,7 +35,7 @@ func TestLoadTrucks(t *testing.T) {
 		t.Error("Expected output connection = chconn, got", truck.Output.Connection)
 	}
 
-	inputSql, err := os.ReadFile("../../test/fixtures/fake_project/postgres_to_clickhouse/input.sql")
+	inputSql, err := os.ReadFile("../../test/fixtures/projects/postgres_to_clickhouse/truck/input.sql")
 	if err != nil {
 		t.Error(err)
 	}
@@ -44,7 +44,7 @@ func TestLoadTrucks(t *testing.T) {
 		t.Error("Expected input sql to be ", inputSql, "got", truck.Input.Sql)
 	}
 
-	outputSql, err := os.ReadFile("../../test/fixtures/fake_project/postgres_to_clickhouse/output.sql")
+	outputSql, err := os.ReadFile("../../test/fixtures/projects/postgres_to_clickhouse/truck/output.sql")
 	if err != nil {
 		t.Error(err)
 	}

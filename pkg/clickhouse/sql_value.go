@@ -77,7 +77,6 @@ func makeValuesList(rowChan chan [][]any, maxSize int, extraRows [][]any) (*stri
 			// TODO [PERFORMANCE] If we're inserting to a temporary table, then we don't need to count the size of the values. Counting just the size of the SQL string is enough.
 			if sb.Len()+totalValueSize+bytesWritten+rowSize >= maxSize {
 				return &sb, values, allRows[i+1:]
-			} else {
 			}
 			globalRowIdx++
 		}

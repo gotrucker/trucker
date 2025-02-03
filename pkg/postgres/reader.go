@@ -39,7 +39,6 @@ func (r *Reader) Read(changeset *db.Changeset) *db.ChanChangeset {
 	if err != nil {
 		panic(err)
 	}
-	defer conn.Release()
 
 	var flatValues []any
 	columnsLiteral := makeColumnsList(changeset.Columns).String()
@@ -60,7 +59,7 @@ func (r *Reader) Read(changeset *db.Changeset) *db.ChanChangeset {
 		// Load in batches to a temporary table instead of using a VALUES list
 		// since we're over the maximum number of parameters supported by PG for
 		// a SQL query.
-		log.Printf("[Postgres Reader] Insert with more than 32k parameters. Using temporary table for %d rows\n", len(changeset.Rows))
+		log.Printf("[Postgres Reader] Reading changeset with more than 32k parameters. Using temporary table for %d rows\n", len(changeset.Rows))
 		tmplVars["rows"] = "r"
 		r.prepareTempTable(conn, changeset, columnsLiteral, changeset.Rows)
 	}
@@ -71,7 +70,7 @@ func (r *Reader) Read(changeset *db.Changeset) *db.ChanChangeset {
 		panic(err)
 	}
 
-	rows, err := r.conn.Query(context.Background(), sql.String(), flatValues...)
+	rows, err := conn.Query(context.Background(), sql.String(), flatValues...)
 	if err != nil {
 		log.Printf("[Postgres Reader] Error running query:\n%s\n", sql.String())
 		log.Printf("[Postgres Reader] Query values:\n%v\n", flatValues)
@@ -91,6 +90,7 @@ func (r *Reader) Read(changeset *db.Changeset) *db.ChanChangeset {
 
 	// TODO This go routine is basically the same between reader and backfill. Refactor to avoid dups
 	go func() {
+		defer conn.Release()
 		defer rows.Close()
 		defer close(rowChan)
 
@@ -108,7 +108,6 @@ func (r *Reader) Read(changeset *db.Changeset) *db.ChanChangeset {
 				rowChan <- rowBatch
 				rowBatch = make([][]any, 0, batchSize)
 			}
-
 		}
 
 		if len(rowBatch) > 0 {
@@ -130,11 +129,19 @@ func (r *Reader) Close() {
 
 func (r *Reader) prepareTempTable(conn *pgxpool.Conn, changeset *db.Changeset, columnsLiteral string, rows [][]any) {
 	// Create a temporary table to store the rows
-	_, err := conn.Exec(
-		context.Background(),
-		fmt.Sprintf("CREATE TEMPORARY TABLE r (LIKE %s)", changeset.Table),
-	)
+	sb := strings.Builder{}
+	sb.WriteString("CREATE TEMPORARY TABLE r (")
+	for i, col := range changeset.Columns {
+		if i > 0 {
+			sb.WriteByte(',')
+		}
+		sb.WriteString(fmt.Sprintf("%s %s", col.Name, dbTypeToPgType(col.Type)))
+	}
+	sb.WriteByte(')')
+
+	_, err := conn.Exec(context.Background(), sb.String())
 	if err != nil {
+		log.Printf("[Postgres Reader] Error executing SQL:\n%s", sb.String())
 		panic(err)
 	}
 
@@ -146,6 +153,7 @@ func (r *Reader) prepareTempTable(conn *pgxpool.Conn, changeset *db.Changeset, c
 	for chunk := range slices.Chunk(rows, chunkSize) {
 		sb := strings.Builder{}
 		sb.WriteString(baseSql)
+		flatValues := make([]any, len(chunk) * numCols)
 
 		for i := range len(chunk) {
 			if i > 0 {
@@ -158,12 +166,13 @@ func (r *Reader) prepareTempTable(conn *pgxpool.Conn, changeset *db.Changeset, c
 					sb.WriteByte(',')
 				}
 				sb.WriteString(fmt.Sprintf("$%d", (i*numCols)+j+1))
+				flatValues[(i*numCols)+j] = chunk[i][j]
 			}
 
 			sb.WriteByte(')')
 		}
 
-		_, err = conn.Exec(context.Background(), sb.String(), chunk)
+		_, err = conn.Exec(context.Background(), sb.String(), flatValues...)
 		if err != nil {
 			panic(err)
 		}

@@ -50,7 +50,7 @@ func makeChangesets(wal2jsonChanges []byte, columnsCache map[string][]db.Column)
 			tableCols := columnsCache[table]
 			numCols := len(tableCols)
 
-			if changeset == nil || table != changeset.Table {
+			if changeset == nil || table != changeset.Table || change.Kind != db.OperationStr(changeset.Operation){
 				if changeset != nil {
 					if !yield(changeset) {
 						return

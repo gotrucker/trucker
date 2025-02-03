@@ -103,14 +103,20 @@ func TestWrite(t *testing.T) {
 	defer w.Close()
 	w.SetupPositionTracking()
 
+	rows := make(chan [][]any, 1)
+	rows <- [][]any{{"Green Spot", 10, 1}}
+	close(rows)
+
 	w.Write(
-		db.Insert,
-		[]db.Column{
-			{Name: "name", Type: db.String},
-			{Name: "age", Type: db.Int32},
-			{Name: "whisky_type_id", Type: db.Int32},
+		&db.ChanChangeset{
+			Operation: db.Insert,
+			Columns: []db.Column{
+				{Name: "name", Type: db.String},
+				{Name: "age", Type: db.Int32},
+				{Name: "whisky_type_id", Type: db.Int32},
+			},
+			Rows: rows,
 		},
-		[][]any{{"Green Spot", 10, 1}},
 	)
 	row := w.conn.QueryRow(
 		context.Background(),

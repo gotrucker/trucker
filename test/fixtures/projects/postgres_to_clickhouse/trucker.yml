@@ -5,12 +5,6 @@ connections:
   database: trucker
   user: trucker
   pass: pgpass
-- name: pg_output_conn
-  adapter: postgres
-  host: pg_output
-  database: trucker
-  user: trucker
-  pass: pgpass
 - name: chconn
   adapter: clickhouse
   host: clickhouse

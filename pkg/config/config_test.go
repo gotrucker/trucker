@@ -5,10 +5,10 @@ import (
 )
 
 func TestLoadConfig(t *testing.T) {
-	config := Load("../../test/fixtures/fake_project/trucker.yml")
+	config := Load("../../test/fixtures/projects/postgres_to_clickhouse/trucker.yml")
 
-	if len(config.Connections) != 3 {
-		t.Error("Expected 3 connections, got", len(config.Connections))
+	if len(config.Connections) != 2 {
+		t.Error("Expected 2 connections, got", len(config.Connections))
 	}
 
 	conn := config.Connections["pg_input_conn"]
@@ -70,5 +70,4 @@ func TestLoadConfig(t *testing.T) {
 	if conn.Pass != "trucker" {
 		t.Error("Expected connection pass = trucker got", conn.Pass)
 	}
-
 }

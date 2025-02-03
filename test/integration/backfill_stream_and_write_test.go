@@ -2,13 +2,11 @@ package integration_test
 
 import (
 	"context"
-	"fmt"
 	"reflect"
 	"testing"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
-	"github.com/jackc/pglogrepl"
 
 	"github.com/tonyfg/trucker/pkg/db"
 	"github.com/tonyfg/trucker/pkg/postgres"
@@ -38,10 +36,10 @@ func TestBackfillReplicationReadAndWrite(t *testing.T) {
 		"test",
 		`INSERT INTO trucker.whiskies_flat (id, name, age, type, country)
 SELECT id,
-       argMaxState(tuple(name::Nullable(String)), now64()),
-       argMaxState(tuple((age * 2)::Nullable(Int32)), now64()),
-       argMaxState(tuple(type::Nullable(String)), now64()),
-       argMaxState(tuple(country::Nullable(String)), now64())
+       argMaxState(name, now64()),
+       argMaxState((age * 2)::Int32, now64()),
+       argMaxState(type, now64()),
+       argMaxState(country, now64())
 FROM {{ .rows }}
 GROUP BY id`,
 		helpers.ClickhouseCfg,
@@ -102,7 +100,6 @@ got %T %v`, expectedColumns, expectedColumns, columns, columns)
 got %T %v`, expectedRows, expectedRows, rows, rows)
 	}
 
-	log.Println("Snapshot LSN", pglogrepl.LSN(snapshotLsn))
 	// Now let's stream Jack Daniels
 	streamChan := rc.Start(snapshotLsn, 0)
 	processedChangeset := false

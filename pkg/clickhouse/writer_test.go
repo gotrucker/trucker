@@ -74,16 +74,21 @@ func TestWrite(t *testing.T) {
 	defer w.Close()
 	w.SetupPositionTracking()
 
+	rows := make(chan [][]any, 1)
+	rows <- [][]any{{1, "Green Spot", 10, "Single Pot Still", "Ireland"}}
+	close(rows)
 	w.Write(
-		db.Insert,
-		[]db.Column{
-			{Name: "id", Type: db.Int32},
-			{Name: "name", Type: db.String},
-			{Name: "age", Type: db.Int32},
-			{Name: "type", Type: db.String},
-			{Name: "country", Type: db.String},
+		&db.ChanChangeset{
+			Operation: db.Insert,
+			Columns: []db.Column{
+				{Name: "id", Type: db.Int32},
+				{Name: "name", Type: db.String},
+				{Name: "age", Type: db.Int32},
+				{Name: "type", Type: db.String},
+				{Name: "country", Type: db.String},
+			},
+			Rows: rows,
 		},
-		[][]any{{1, "Green Spot", 10, "Single Pot Still", "Ireland"}},
 	)
 
 	row := w.conn.QueryRow(
@@ -117,7 +122,7 @@ func TestWrite(t *testing.T) {
 func writerTestSetup() *Writer {
 	helpers.PrepareClickhouseTestDb().Close()
 
-	path := filepath.Join(helpers.Basepath, "../fixtures/fake_project/postgres_to_clickhouse/output.sql")
+	path := filepath.Join(helpers.Basepath, "../fixtures/projects/postgres_to_clickhouse/truck/output.sql")
 	sqlTemplate, err := os.ReadFile(path)
 	if err != nil {
 		panic(err)

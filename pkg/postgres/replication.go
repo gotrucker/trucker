@@ -223,6 +223,7 @@ func (rc *ReplicationClient) Close() {
 	}
 
 	rc.running = false
+	rc.streamConn.Close(context.Background())
 	rc.conn.Close(context.Background())
 }
 

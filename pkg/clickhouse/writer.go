@@ -83,10 +83,12 @@ func (w *Writer) Write(changeset *db.ChanChangeset) {
 	valuesList, flatValues, excessRows := makeValuesList(changeset.Rows, maxValuesListSize, [][]any{})
 
 	if len(flatValues) == 0 {
+		log.Println("[Clickhouse Writer] Received empty changeset. Ignoring...")
 		return
 	} else if excessRows != nil && len(excessRows) > 0 {
 		// Crap... we'll need to insert everything in batches to a temporary
 		// table, and the run out output.sql from that table...
+		log.Println("[Clickhouse Writer] Writing changeset with more than 256k bytes. Using temporary table...")
 		w.prepareTempTable(changeset, valuesList, flatValues, excessRows, typesLiteral, maxValuesListSize)
 		defer w.conn.Exec(context.Background(), "DROP TABLE r")
 		flatValues = nil

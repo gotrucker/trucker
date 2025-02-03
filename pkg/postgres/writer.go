@@ -78,14 +78,16 @@ func (w *Writer) Write(changeset *db.ChanChangeset) {
 	}
 	defer conn.Release()
 
-	// FIXME: This will blow up memory on backfills of very large tables and/or
-	//        streaming very large transactions.
-	//        We need to look at the CH writer to get some inspiration to fix this.
+	// FIXME This will blow up memory on backfills of very large tables and/or
+	//       streaming very large transactions.
+	//       We need to look at the CH writer to get some inspiration to fix this.
 	rows := make([][]any, 0)
 	for rowBatch := range changeset.Rows {
 		rows = append(rows, rowBatch...)
 	}
 
+	// FIXME This will break if we go over postgres' maximum number of prepared
+	//       statement parameters (len(rows) * len(columns) must be less than 32768
 	valuesLiteral, flatValues := makeValuesList(changeset.Columns, rows)
 	sb := strings.Builder{}
 	sb.WriteString("(VALUES ")

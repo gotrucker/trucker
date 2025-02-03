@@ -2,6 +2,7 @@ DROP SCHEMA public CASCADE;
 CREATE SCHEMA public;
 DELETE FROM pg_publication;
 DROP PUBLICATION IF EXISTS trucker_trucker;
+SELECT pg_terminate_backend(active_pid) FROM pg_replication_slots;
 SELECT pg_drop_replication_slot(slot_name) FROM pg_replication_slots;
 
 CREATE TABLE public.countries (
