@@ -18,7 +18,7 @@ func TestPostgresToPostgres(t *testing.T) {
 	exitChan := startTrucker("postgres_to_postgres")
 
 	// Test backfill
-	for i := 0;; i++ {
+	for i := 0; ; i++ {
 		var cnt uint64
 		row := conn.QueryRow(context.Background(), "SELECT count(*) FROM whiskies_flat")
 		row.Scan(&cnt)
@@ -35,7 +35,7 @@ func TestPostgresToPostgres(t *testing.T) {
 
 	// Test inserts
 	conn.Exec(context.Background(), "INSERT INTO public.whiskies (name, age, whisky_type_id) VALUES ('Jack Daniels', 5, 1)")
-	for i := 0;; i++ {
+	for i := 0; ; i++ {
 		var cnt uint64
 		row := conn.QueryRow(context.Background(), "SELECT count(*) FROM whiskies_flat")
 		row.Scan(&cnt)
@@ -52,7 +52,7 @@ func TestPostgresToPostgres(t *testing.T) {
 
 	// Test updates
 	conn.Exec(context.Background(), "UPDATE public.whiskies SET age = 7, name = 'Jack Daniels 2' WHERE name = 'Jack Daniels'")
-	for i := 0;; i++ {
+	for i := 0; ; i++ {
 		var cnt uint64
 		row := conn.QueryRow(context.Background(), "SELECT count(*) FROM whiskies_flat WHERE name = 'Jack Daniels 2'")
 		row.Scan(&cnt)
@@ -79,7 +79,7 @@ func TestPostgresToPostgres(t *testing.T) {
 
 	// Test deletes
 	conn.Exec(context.Background(), "DELETE FROM public.whiskies WHERE name = 'Jack Daniels 2'")
-	for i := 0;; i++ {
+	for i := 0; ; i++ {
 		var cnt uint64
 		row := conn.QueryRow(context.Background(), "SELECT count(*) FROM whiskies_flat WHERE id = $1 AND country IS NULL", id)
 		row.Scan(&cnt)
@@ -107,7 +107,7 @@ func TestPostgresToPostgres(t *testing.T) {
 	close(exitChan)
 }
 
-func TestPostgresToPosrgresLarge(t *testing.T) {
+func TestPostgresToPostgresLarge(t *testing.T) {
 	conn := helpers.PreparePostgresTestDb()
 	defer conn.Close(context.Background())
 
@@ -124,7 +124,7 @@ func TestPostgresToPosrgresLarge(t *testing.T) {
 	exitChan := startTrucker("postgres_to_postgres")
 
 	// Test backfill
-	for i := 0;; i++ {
+	for i := 0; ; i++ {
 		var cnt uint64
 		row := conn.QueryRow(context.Background(), "SELECT count(*) FROM whiskies_flat")
 		row.Scan(&cnt)
@@ -141,10 +141,10 @@ func TestPostgresToPosrgresLarge(t *testing.T) {
 
 	// Test updates
 	conn.Exec(context.Background(), "UPDATE public.whiskies SET age = 77")
-	for i := 0;; i++ {
+	for i := 0; ; i++ {
 		rows, err := conn.Query(context.Background(), "SELECT age::bigint, count(*) FROM whiskies_flat GROUP BY age ORDER BY age")
 		if err != nil {
-			t.Error("Couldn't query Clickhouse... ", err)
+			t.Error("Couldn't query Postgres... ", err)
 		}
 
 		allRows := make([][]int64, 0)
@@ -155,7 +155,7 @@ func TestPostgresToPosrgresLarge(t *testing.T) {
 		}
 		rows.Close()
 
-		expectedResult := [][]uint64{
+		expectedResult := [][]int64{
 			{120, 1},
 			{124, 1},
 			{130, 1},

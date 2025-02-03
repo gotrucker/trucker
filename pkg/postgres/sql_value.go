@@ -50,7 +50,7 @@ func makeChangesets(wal2jsonChanges []byte, columnsCache map[string][]db.Column)
 			tableCols := columnsCache[table]
 			numCols := len(tableCols)
 
-			if changeset == nil || table != changeset.Table || change.Kind != db.OperationStr(changeset.Operation){
+			if changeset == nil || table != changeset.Table || change.Kind != db.OperationStr(changeset.Operation) {
 				if changeset != nil {
 					if !yield(changeset) {
 						return
@@ -122,8 +122,8 @@ func makeColumnsList(columns []db.Column) (columnsLiteral *strings.Builder) {
 	return &sb
 }
 
-func makeValuesList(columns []db.Column, rows [][]any) (valuesList *strings.Builder, values []any) {
-	var sb strings.Builder
+func makeValuesList(columns []db.Column, rows [][]any, withTypes bool) (valuesList *strings.Builder, values []any) {
+	valuesList = &strings.Builder{}
 	values = make([]any, 0)
 
 	numCols := len(columns)
@@ -131,31 +131,65 @@ func makeValuesList(columns []db.Column, rows [][]any) (valuesList *strings.Buil
 
 	for i, row := range rows {
 		if i > 0 {
-			sb.WriteByte(',')
+			valuesList.WriteByte(',')
 		}
-		sb.WriteByte('(')
+		valuesList.WriteByte('(')
 
 		for j := range numCols {
 			if j > 0 {
-				sb.WriteByte(',')
+				valuesList.WriteByte(',')
 			}
 
-			sb.WriteString(fmt.Sprintf(
-				"$%d::%s",
-				(i*numCols)+j+1,
-				dbTypeToPgType(columns[j].Type),
-			))
+			var val string
+			if withTypes {
+				val = fmt.Sprintf(
+					"$%d::%s",
+					(i*numCols)+j+1,
+					dbTypeToPgType(columns[j].Type),
+				)
+			} else {
+				val = fmt.Sprintf("$%d", (i*numCols)+j+1)
+			}
+			valuesList.WriteString(val)
 		}
 
 		values = append(values, row...)
-		sb.WriteByte(')')
+		valuesList.WriteByte(')')
 
 		if i >= maxRows {
 			break
 		}
 	}
 
-	return &sb, values
+	return valuesList, values
+}
+
+func makeValuesListFromRowChan(columns []db.Column, rowChan chan [][]any, extraRows [][]any, withTypes bool) (*strings.Builder, []any, [][]any) {
+	var valuesList = strings.Builder{}
+	values := make([]any, 0)
+
+	if len(extraRows) > 0 {
+		if len(extraRows) > maxPreparedStatementArgs {
+			valuesListBatch, valuesBatch := makeValuesList(columns, extraRows[:maxPreparedStatementArgs], withTypes)
+			return valuesListBatch, valuesBatch, extraRows[maxPreparedStatementArgs:]
+		} else {
+			valuesListBatch, valuesBatch := makeValuesList(columns, extraRows, withTypes)
+			return valuesListBatch, valuesBatch, [][]any{}
+		}
+	}
+
+	for rowBatch := range rowChan {
+		if len(values)+(len(rowBatch)*len(columns)) > maxPreparedStatementArgs {
+			extraRows = rowBatch
+			break
+		}
+
+		valuesListBatch, valuesBatch := makeValuesList(columns, rowBatch, withTypes)
+		valuesList.WriteString(valuesListBatch.String())
+		values = append(values, valuesBatch...)
+	}
+
+	return &valuesList, values, extraRows
 }
 
 func oidToDbType(oid uint32) uint8 {

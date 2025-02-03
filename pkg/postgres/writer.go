@@ -78,35 +78,38 @@ func (w *Writer) Write(changeset *db.ChanChangeset) {
 	}
 	defer conn.Release()
 
-	// FIXME This will blow up memory on backfills of very large tables and/or
-	//       streaming very large transactions.
-	//       We need to look at the CH writer to get some inspiration to fix this.
-	rows := make([][]any, 0)
-	for rowBatch := range changeset.Rows {
-		rows = append(rows, rowBatch...)
-	}
-
-	// FIXME This will break if we go over postgres' maximum number of prepared
-	//       statement parameters (len(rows) * len(columns) must be less than 32768
-	valuesLiteral, flatValues := makeValuesList(changeset.Columns, rows)
-	sb := strings.Builder{}
-	sb.WriteString("(VALUES ")
-	sb.WriteString(valuesLiteral.String())
-	sb.WriteString(") AS r (")
-	sb.WriteString(makeColumnsList(changeset.Columns).String())
-	sb.WriteByte(')')
-
 	tmplVars := map[string]string{
 		"operation": db.OperationStr(changeset.Operation),
-		"rows":      sb.String(),
 	}
+
+	columnsLiteral := makeColumnsList(changeset.Columns).String()
+	valuesList, flatValues, excessRows := makeValuesListFromRowChan(changeset.Columns, changeset.Rows, [][]any{}, true)
+
+	if len(flatValues) == 0 {
+		return
+	} else if len(excessRows) > 0 {
+		log.Println("[Postgres Writer] Writing changeset with more than 32k parameters. Using temporary table...")
+		w.prepareTempTable(conn, changeset, columnsLiteral, flatValues, excessRows)
+		defer conn.Exec(context.Background(), "DROP TABLE r")
+		flatValues = nil
+		tmplVars["rows"] = "r"
+	} else {
+		sb := strings.Builder{}
+		sb.WriteString("(VALUES ")
+		sb.WriteString(valuesList.String())
+		sb.WriteString(") AS r (")
+		sb.WriteString(columnsLiteral)
+		sb.WriteByte(')')
+		tmplVars["rows"] = sb.String()
+	}
+
 	sql := new(bytes.Buffer)
 	err = w.queryTemplate.Execute(sql, tmplVars)
 	if err != nil {
 		panic(err)
 	}
 
-	_, err = w.conn.Exec(context.Background(), sql.String(), flatValues...)
+	_, err = conn.Exec(context.Background(), sql.String(), flatValues...)
 	if err != nil {
 		log.Printf("[Postgres Writer] Error running query:\n%s\n", sql.String())
 		panic(err)
@@ -136,4 +139,64 @@ func (w *Writer) WithTransaction(f func()) {
 
 func (w *Writer) Close() {
 	w.conn.Close()
+}
+
+func (w *Writer) prepareTempTable(conn *pgxpool.Conn, changeset *db.ChanChangeset, columnsLiteral string, flatValues []any, extraRows [][]any) {
+	// Create a temporary table to store the rows
+	sb := strings.Builder{}
+	sb.WriteString("CREATE TEMPORARY TABLE r (")
+	for i, col := range changeset.Columns {
+		if i > 0 {
+			sb.WriteByte(',')
+		}
+		sb.WriteString(fmt.Sprintf("%s %s", col.Name, dbTypeToPgType(col.Type)))
+	}
+	sb.WriteByte(')')
+
+	_, err := conn.Exec(context.Background(), sb.String())
+	if err != nil {
+		log.Printf("[Postgres Reader] Error executing SQL:\n%s", sb.String())
+		panic(err)
+	}
+
+	baseSql := fmt.Sprintf("INSERT INTO r (%s) VALUES ", columnsLiteral)
+	previousValuesLen := 0
+	valuesList := &strings.Builder{}
+	valuesList.WriteByte('(')
+
+	for i := range len(flatValues) {
+		if i > 0 {
+			if i%len(changeset.Columns) == 0 {
+				valuesList.WriteString("),(")
+			} else {
+				valuesList.WriteByte(',')
+			}
+		}
+
+		valuesList.WriteString(fmt.Sprintf("$%d", i+1))
+	}
+	valuesList.WriteByte(')')
+
+	for {
+		if sb.Len() == 0 || len(flatValues) != previousValuesLen {
+			sb = strings.Builder{}
+			sb.WriteString(baseSql)
+			sb.WriteString(valuesList.String())
+		}
+
+		previousValuesLen = len(flatValues)
+		_, err = conn.Exec(context.Background(), sb.String(), flatValues...)
+		if err != nil {
+			log.Printf("[Postgres Writer] Error inserting into temporary table:\n%s", sb.String())
+			log.Printf("[Postgres Writer] Values:\n%v", flatValues)
+			panic(err)
+		}
+
+		// TODO [PERFORMANCE] Is there a way to avoid rebuilding valuesList on every iteration?
+		valuesList, flatValues, extraRows = makeValuesListFromRowChan(changeset.Columns, changeset.Rows, extraRows, false)
+
+		if len(flatValues) == 0 {
+			break
+		}
+	}
 }

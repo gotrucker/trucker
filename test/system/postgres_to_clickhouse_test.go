@@ -20,7 +20,7 @@ func TestPostgresToClickhouse(t *testing.T) {
 	exitChan := startTrucker("postgres_to_clickhouse")
 
 	// Test backfill
-	for i := 0;; i++ {
+	for i := 0; ; i++ {
 		var cnt uint64
 		row := chConn.QueryRow(context.Background(), "SELECT count(*) FROM trucker.v_whiskies_flat")
 		row.Scan(&cnt)
@@ -37,7 +37,7 @@ func TestPostgresToClickhouse(t *testing.T) {
 
 	// Test inserts
 	pgConn.Exec(context.Background(), "INSERT INTO public.whiskies (name, age, whisky_type_id) VALUES ('Jack Daniels', 5, 1)")
-	for i := 0;; i++ {
+	for i := 0; ; i++ {
 		var cnt uint64
 		row := chConn.QueryRow(context.Background(), "SELECT count(*) FROM trucker.v_whiskies_flat")
 		row.Scan(&cnt)
@@ -54,7 +54,7 @@ func TestPostgresToClickhouse(t *testing.T) {
 
 	// Test updates
 	pgConn.Exec(context.Background(), "UPDATE public.whiskies SET age = 7, name = 'Jack Daniels 2' WHERE name = 'Jack Daniels'")
-	for i := 0;; i++ {
+	for i := 0; ; i++ {
 		var cnt uint64
 		row := chConn.QueryRow(context.Background(), "SELECT count(*) FROM trucker.v_whiskies_flat WHERE name = 'Jack Daniels 2'")
 		row.Scan(&cnt)
@@ -81,7 +81,7 @@ func TestPostgresToClickhouse(t *testing.T) {
 
 	// Test deletes
 	pgConn.Exec(context.Background(), "DELETE FROM public.whiskies WHERE name = 'Jack Daniels 2'")
-	for i := 0;; i++ {
+	for i := 0; ; i++ {
 		var cnt uint64
 		row := chConn.QueryRow(context.Background(), "SELECT count(*) FROM trucker.v_whiskies_flat WHERE id = $1 AND country = ''", id)
 		row.Scan(&cnt)
@@ -128,7 +128,7 @@ func TestPostgresToClickhouseLarge(t *testing.T) {
 	exitChan := startTrucker("postgres_to_clickhouse")
 
 	// Test backfill
-	for i := 0;; i++ {
+	for i := 0; ; i++ {
 		var cnt uint64
 		row := chConn.QueryRow(context.Background(), "SELECT count(*) FROM trucker.v_whiskies_flat")
 		row.Scan(&cnt)
@@ -145,7 +145,7 @@ func TestPostgresToClickhouseLarge(t *testing.T) {
 
 	// Test updates
 	pgConn.Exec(context.Background(), "UPDATE public.whiskies SET age = 77")
-	for i := 0;; i++ {
+	for i := 0; ; i++ {
 		rows, err := chConn.Query(context.Background(), "SELECT age::UInt64, count(*) FROM trucker.v_whiskies_flat GROUP BY age ORDER BY age")
 		if err != nil {
 			t.Error("Couldn't query Clickhouse... ", err)
@@ -181,4 +181,3 @@ but got %v: `, expectedResult, allRows)
 
 	close(exitChan)
 }
-

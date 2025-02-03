@@ -171,7 +171,6 @@ func (w *Writer) prepareTempTable(changeset *db.ChanChangeset, valuesList *strin
 		panic(err)
 	}
 
-	sb = strings.Builder{}
 	previousValuesLen := 0
 
 	for {

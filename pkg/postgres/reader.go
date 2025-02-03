@@ -46,7 +46,7 @@ func (r *Reader) Read(changeset *db.Changeset) *db.ChanChangeset {
 
 	if len(changeset.Columns)*len(changeset.Rows) <= maxPreparedStatementArgs {
 		// All of the data fits in a single query using a VALUES list. Let's do it!
-		valuesList, values := makeValuesList(changeset.Columns, changeset.Rows)
+		valuesList, values := makeValuesList(changeset.Columns, changeset.Rows, true)
 		flatValues = values
 		sb := strings.Builder{}
 		sb.WriteString("(VALUES ")
@@ -153,24 +153,8 @@ func (r *Reader) prepareTempTable(conn *pgxpool.Conn, changeset *db.Changeset, c
 	for chunk := range slices.Chunk(rows, chunkSize) {
 		sb := strings.Builder{}
 		sb.WriteString(baseSql)
-		flatValues := make([]any, len(chunk) * numCols)
-
-		for i := range len(chunk) {
-			if i > 0 {
-				sb.WriteByte(',')
-			}
-			sb.WriteByte('(')
-
-			for j := range numCols {
-				if j > 0 {
-					sb.WriteByte(',')
-				}
-				sb.WriteString(fmt.Sprintf("$%d", (i*numCols)+j+1))
-				flatValues[(i*numCols)+j] = chunk[i][j]
-			}
-
-			sb.WriteByte(')')
-		}
+		valuesList, flatValues := makeValuesList(changeset.Columns, chunk, false)
+		sb.WriteString(valuesList.String())
 
 		_, err = conn.Exec(context.Background(), sb.String(), flatValues...)
 		if err != nil {

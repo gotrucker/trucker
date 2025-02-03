@@ -11,8 +11,8 @@ import (
 	"github.com/tonyfg/trucker/pkg/db"
 )
 
-const channelSize = 64
-const batchSize = 1024
+const channelSize = 16
+const batchSize = 4096
 
 func (rc *ReplicationClient) ReadBackfillData(table string, snapshotName string, readQuery string) *db.ChanChangeset {
 	var schema, tblName, nullFields string
