@@ -25,7 +25,7 @@ func Start(projectPath string) (chan truck.ExitMsg, []config.Truck, map[string][
 			replicatedTablesPerConnection[connName] = make([]string, 0, 1)
 		}
 		replicatedTablesPerConnection[connName] =
-			append(replicatedTablesPerConnection[connName], truckCfg.Input.Table)
+			append(replicatedTablesPerConnection[connName], truckCfg.Input.Tables...)
 	}
 
 	replicationClients := make(map[string]*postgres.ReplicationClient)
@@ -61,15 +61,12 @@ func backfill(replicationClients map[string]*postgres.ReplicationClient, trucks 
 		defer rc.ResetStreamConn()
 		log.Println("Backfill LSN", pglogrepl.LSN(backfillLSN))
 
+		for _, truck := range trucks[connName] {
+			truck.Backfill(snapshotName, backfillLSN, tablesToBackfill)
+		}
+
 		backfillLSNs[connName] = backfillLSN
 		backfilledTables[connName] = tablesToBackfill
-
-		for _, truck := range trucks[connName] {
-			if slices.Contains(tablesToBackfill, truck.InputTable) {
-				log.Printf("Backfilling truck '%s'...\n", truck.Name)
-				truck.Backfill(snapshotName, backfillLSN)
-			}
-		}
 	}
 
 	return backfilledTables, backfillLSNs
@@ -81,9 +78,17 @@ func catchup(replicationClients map[string]*postgres.ReplicationClient, trucks m
 		endLSN := backfillLSNs[connName]
 
 		for _, truck := range trucks[connName] {
-			if slices.Contains(skipTables[connName], truck.InputTable) {
+			needsCatchup := false
+			for _, table := range truck.InputTables {
+				if !slices.Contains(skipTables[connName], table) {
+					needsCatchup = true
+				}
+			}
+
+			if !needsCatchup {
 				continue
 			}
+
 			log.Printf("[Truck %s] Catching up to latest stream position...\n", truck.Name)
 
 			truckLSN := truck.Writer.GetCurrentPosition()
@@ -108,7 +113,8 @@ func catchup(replicationClients map[string]*postgres.ReplicationClient, trucks m
 
 				for changeset := range changesets {
 					for _, truck := range trucks[connName] {
-						if truck.InputTable == changeset.Table {
+						if !slices.Contains(skipTables[connName], changeset.Table) &&
+							slices.Contains(truck.InputTables, changeset.Table) {
 							truck.ProcessChangeset(changeset)
 						}
 					}
@@ -150,7 +156,7 @@ func streamChanges(trucksByInputConnection map[string][]*truck.Truck) {
 			if changesets != nil {
 				for changeset := range changesets {
 					for _, truck := range trucks {
-						if truck.InputTable == changeset.Table {
+						if slices.Contains(truck.InputTables, changeset.Table) {
 							truck.ProcessChangeset(changeset)
 						}
 					}

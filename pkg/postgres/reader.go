@@ -32,6 +32,10 @@ func NewReader(readQuery string, cfg config.Connection) *Reader {
 }
 
 func (r *Reader) Read(changeset *db.Changeset) *db.ChanChangeset {
+	if len(changeset.Columns) == 0 || len(changeset.Rows) == 0 {
+		return nil
+	}
+
 	// We need to hold on to a specific connection to be able to create and
 	// access the temporary table until we're done (in case we're not using a
 	// VALUES list)
@@ -42,7 +46,10 @@ func (r *Reader) Read(changeset *db.Changeset) *db.ChanChangeset {
 
 	var flatValues []any
 	columnsLiteral := makeColumnsList(changeset.Columns).String()
-	tmplVars := map[string]string{"operation": db.OperationStr(changeset.Operation)}
+	tmplVars := map[string]string{
+		"operation":   db.OperationStr(changeset.Operation),
+		"input_table": changeset.Table,
+	}
 
 	if len(changeset.Columns)*len(changeset.Rows) <= maxPreparedStatementArgs {
 		// All of the data fits in a single query using a VALUES list. Let's do it!

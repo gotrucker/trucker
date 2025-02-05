@@ -51,8 +51,9 @@ WHERE table_schema = $1
 		panic(err)
 	}
 	tmplVars := map[string]string{
-		"operation": "insert",
-		"rows":      fmt.Sprintf("(SELECT *, %s FROM %s) r", nullFields, table),
+		"operation":   "insert",
+		"input_table": table,
+		"rows":        fmt.Sprintf("(SELECT *, %s FROM %s) r", nullFields, table),
 	}
 	sql := new(bytes.Buffer)
 	err = tmpl.Execute(sql, tmplVars)
@@ -88,7 +89,7 @@ WHERE table_schema = $1
 	go func() {
 		defer func() {
 			_, err := rc.conn.Exec(context.Background(), "ROLLBACK")
-			if err != nil {
+			if err != nil && rc.running {
 				panic(err)
 			}
 		}()

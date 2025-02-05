@@ -1,4 +1,4 @@
-# trucker
+# Trucker
 
 # Objective
 Pick up data changes from postgres logical replication stream and allow getting

@@ -14,7 +14,7 @@ import (
 	"github.com/tonyfg/trucker/test/helpers"
 )
 
-const readQuery = `SELECT r.id, r.name, r.age, t.name type, c.name country
+const readQuery = `SELECT r.id::text, r.name, r.age, t.name type, c.name country
 FROM {{ .rows }}
 JOIN public.whisky_types t ON r.whisky_type_id = t.id
 JOIN public.countries c ON c.id = t.country_id
@@ -81,10 +81,10 @@ GROUP BY id`,
 
 	expectedColumns := []string{"id", "name", "age", "type", "country"}
 	expectedRows := [][]any{
-		{int32(1), "Glenfiddich", int32(30), "Single Malt", "Scotland"},
-		{int32(2), "Lagavulin", int32(24), "Triple Distilled", "Ireland"},
-		{int32(3), "Hibiki", int32(34), "Japanese", "Japan"},
-		{int32(4), "Laphroaig", int32(20), "Salty", "Portugal"},
+		{"1", "Glenfiddich", int32(30), "Single Malt", "Scotland"},
+		{"2", "Lagavulin", int32(24), "Triple Distilled", "Ireland"},
+		{"3", "Hibiki", int32(34), "Japanese", "Japan"},
+		{"4", "Laphroaig", int32(20), "Salty", "Portugal"},
 	}
 	columns, rows := loadWhiskiesFlat(t, chConn)
 
@@ -131,11 +131,11 @@ got %T %v`, expectedRows, expectedRows, rows, rows)
 
 	expectedColumns = []string{"id", "name", "age", "type", "country"}
 	expectedRows = [][]any{
-		{int32(1), "Glenfiddich", int32(30), "Single Malt", "Scotland"},
-		{int32(2), "Lagavulin", int32(24), "Triple Distilled", "Ireland"},
-		{int32(3), "Hibiki", int32(34), "Japanese", "Japan"},
-		{int32(4), "Laphroaig", int32(20), "Salty", "Portugal"},
-		{int32(5), "Jack Daniels", int32(14), "Bourbon", "USA"},
+		{"1", "Glenfiddich", int32(30), "Single Malt", "Scotland"},
+		{"2", "Lagavulin", int32(24), "Triple Distilled", "Ireland"},
+		{"3", "Hibiki", int32(34), "Japanese", "Japan"},
+		{"4", "Laphroaig", int32(20), "Salty", "Portugal"},
+		{"5", "Jack Daniels", int32(14), "Bourbon", "USA"},
 	}
 	columns, rows = loadWhiskiesFlat(t, chConn)
 
@@ -164,8 +164,8 @@ func loadWhiskiesFlat(t *testing.T, conn driver.Conn) ([]string, [][]any) {
 
 	rowValues := make([][]any, 0, 1)
 	for i := 0; rows.Next(); i++ {
-		var id, age int32
-		var name, whiskyType, country string
+		var id, name, whiskyType, country string
+		var age int32
 		rows.Scan(&id, &name, &age, &whiskyType, &country)
 		rowValues = append(rowValues, []any{id, name, age, whiskyType, country})
 	}

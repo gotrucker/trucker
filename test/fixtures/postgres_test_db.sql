@@ -23,6 +23,8 @@ CREATE TABLE public.whiskies (
   whisky_type_id int NOT NULL REFERENCES whisky_types(id)
 );
 
+CREATE TABLE public.more_whiskies (LIKE public.whiskies INCLUDING ALL);
+
 CREATE TABLE public.whiskies_flat (
   id int PRIMARY KEY,
   name text NOT NULL,
@@ -44,6 +46,7 @@ CREATE TABLE public.weird_types (
 ALTER TABLE public.countries REPLICA IDENTITY FULL;
 ALTER TABLE public.whisky_types REPLICA IDENTITY FULL;
 ALTER TABLE public.whiskies REPLICA IDENTITY FULL;
+ALTER TABLE public.more_whiskies REPLICA IDENTITY FULL;
 
 INSERT INTO public.countries (name)
 VALUES ('Portugal'), ('Scotland'), ('Ireland'), ('Japan'), ('USA');
@@ -53,6 +56,9 @@ VALUES ('Bourbon', 5), ('Japanese', 4), ('Triple Distilled', 3), ('Single Malt',
 
 INSERT INTO public.whiskies (name, age, whisky_type_id)
 VALUES ('Glenfiddich', 15, 4), ('Lagavulin', 12, 3), ('Hibiki', 17, 2), ('Laphroaig', 10, 5);
+
+INSERT INTO public.more_whiskies (name, age, whisky_type_id)
+VALUES ('Jameson', 20, 4), ('Monkey Shoulder', 25, 3);
 
 INSERT INTO public.weird_types (a_number, a_bool, a_date, an_ip_addr, a_jsonb, a_ts, a_text_array)
 VALUES (1234567890, true, '2020-01-01', '192.168.0.1', '{"key": "value"}', '2020-01-01T00:37:00Z', '{a, b, c}'),

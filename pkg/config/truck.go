@@ -10,13 +10,13 @@ import (
 type Truck struct {
 	Name  string
 	Input struct {
-		Connection string `yaml:"connection,omitempty"`
-		Table      string `yaml:"table,omitempty"`
+		Connection string   `yaml:"connection,omitempty"`
+		Table      string   `yaml:"table,omitempty"`
+		Tables     []string `yaml:"tables,omitempty"`
 		Sql        string
 	} `yaml:"input"`
 	Output struct {
 		Connection string `yaml:"connection,omitempty"`
-		Table      string `yaml:"table,omitempty"`
 		Sql        string
 	} `yaml:"output"`
 }
@@ -45,9 +45,12 @@ func loadTruck(path string, cfg Config) Truck {
 	dir := filepath.Dir(path)
 	truck.Name = filepath.Base(dir)
 
-	inputSqlBuf, err := os.ReadFile(filepath.Join(dir, "input.sql"))
-	if err == nil {
-		truck.Input.Sql = string(inputSqlBuf)
+	inputSqlPath := filepath.Join(dir, "input.sql")
+	if _, err := os.Stat(inputSqlPath); err == nil {
+		inputSqlBuf, err := os.ReadFile(inputSqlPath)
+		if err == nil {
+			truck.Input.Sql = string(inputSqlBuf)
+		}
 	}
 
 	outputSqlBuf, err := os.ReadFile(filepath.Join(dir, "output.sql"))
@@ -63,11 +66,14 @@ func loadTruck(path string, cfg Config) Truck {
 		cfg.Connections[truck.Output.Connection] = connectionCfg
 	}
 
-	log.Printf(
-		"Configured truck: %s:%s -> %s:%s\n",
-		truck.Input.Connection, truck.Input.Table,
-		truck.Output.Connection, truck.Output.Table,
-	)
+	if truck.Input.Table != "" {
+		truck.Input.Tables = append(truck.Input.Tables, truck.Input.Table)
+	}
+	log.Printf("[Truck %s] configured for:\n", truck.Name)
+
+	for _, table := range truck.Input.Tables {
+		log.Printf("- %s:%s -> %s\n", truck.Input.Connection, table, truck.Output.Connection)
+	}
 
 	return truck
 }

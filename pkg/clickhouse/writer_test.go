@@ -75,13 +75,13 @@ func TestWrite(t *testing.T) {
 	w.SetupPositionTracking()
 
 	rows := make(chan [][]any, 1)
-	rows <- [][]any{{1, "Green Spot", 10, "Single Pot Still", "Ireland"}}
+	rows <- [][]any{{"1", "Green Spot", 10, "Single Pot Still", "Ireland"}}
 	close(rows)
 	w.Write(
 		&db.ChanChangeset{
 			Operation: db.Insert,
 			Columns: []db.Column{
-				{Name: "id", Type: db.Int32},
+				{Name: "id", Type: db.String},
 				{Name: "name", Type: db.String},
 				{Name: "age", Type: db.Int32},
 				{Name: "type", Type: db.String},
@@ -94,11 +94,11 @@ func TestWrite(t *testing.T) {
 	row := w.conn.QueryRow(
 		context.Background(),
 		"SELECT id, name, age, type, country FROM trucker.v_whiskies_flat WHERE name = 'Green Spot'")
-	var id, age int32
-	var name, whiskyType, country string
+	var id, name, whiskyType, country string
+	var age int32
 	row.Scan(&id, &name, &age, &whiskyType, &country)
 
-	if id != 1 {
+	if id != "1" {
 		t.Error("Expected id = 1, got", id)
 	}
 

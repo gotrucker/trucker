@@ -70,8 +70,8 @@ func TestPostgresToClickhouse(t *testing.T) {
 	}
 
 	// Check row we inserted/updated for correct data
-	var id, age int32
-	var typeName, country string
+	var id, typeName, country string
+	var age int32
 	row := chConn.QueryRow(context.Background(), "SELECT id, age, type, country FROM trucker.v_whiskies_flat WHERE name = 'Jack Daniels 2'")
 	row.Scan(&id, &age, &typeName, &country)
 

@@ -2,6 +2,7 @@ package truck
 
 import (
 	"log"
+	"slices"
 	"time"
 
 	"github.com/tonyfg/trucker/pkg/clickhouse"
@@ -20,7 +21,7 @@ type Truck struct {
 	ReplicationClient *postgres.ReplicationClient
 	readQuery         string
 	Reader            db.Reader
-	InputTable        string
+	InputTables       []string
 	Writer            db.Writer
 	OutputTable       string
 	OutputSql         string
@@ -36,20 +37,33 @@ func NewTruck(cfg config.Truck, rc *postgres.ReplicationClient, connCfgs map[str
 		ReplicationClient: rc,
 		readQuery:         cfg.Input.Sql,
 		Reader:            NewReader(cfg.Input.Sql, connCfgs[cfg.Input.Connection]),
-		InputTable:        cfg.Input.Table,
+		InputTables:       cfg.Input.Tables,
 		Writer:            NewWriter(cfg.Input.Connection, cfg.Output.Sql, connCfgs[cfg.Output.Connection]),
-		OutputTable:       cfg.Output.Table,
 		ChangesChan:       make(chan *db.Changeset),
 		KillChan:          make(chan any),
 		DoneChan:          doneChan,
 	}
 }
 
-func (t *Truck) Backfill(snapshotName string, targetLSN uint64) {
+func (t *Truck) Backfill(snapshotName string, targetLSN uint64, allTables []string) {
+	tables := make([]string, 0)
+	for _, table := range allTables {
+		if slices.Contains(t.InputTables, table) {
+			tables = append(tables, table)
+		}
+	}
+
+	if len(tables) == 0 {
+		return
+	}
+
 	start := time.Now()
-	log.Printf("[Truck %s] Running backfill...\n", t.Name)
-	changeset := t.ReplicationClient.ReadBackfillData(t.InputTable, snapshotName, t.readQuery)
-	t.Writer.Write(changeset)
+	log.Printf("[Truck %s] Running backfill for tables: %v\n", t.Name, tables)
+
+	for _, table := range tables {
+		changeset := t.ReplicationClient.ReadBackfillData(table, snapshotName, t.readQuery)
+		t.Writer.Write(changeset)
+	}
 
 	curPos := t.Writer.GetCurrentPosition()
 	if curPos == 0 {
@@ -87,6 +101,9 @@ func (t *Truck) Start() {
 				}
 
 				resultChangeset := t.Reader.Read(changeset)
+				if resultChangeset == nil {
+					continue
+				}
 
 				t.Writer.WithTransaction(func() {
 					t.Writer.Write(resultChangeset)

@@ -1,7 +1,7 @@
 TRUNCATE DATABASE trucker;
 
 CREATE TABLE whiskies_flat (
-  id Int32,
+  id String,
   name AggregateFunction(argMax, String, DateTime64),
   age AggregateFunction(argMax, Int32, DateTime64),
   type AggregateFunction(argMax, String, DateTime64),

@@ -1,0 +1,8 @@
+input:
+  connection: pg_input_conn
+  tables:
+  - public.whiskies
+  - public.more_whiskies
+output:
+  connection: chconn
+  table: trucker.whiskies_flat
