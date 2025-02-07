@@ -3,7 +3,6 @@ package postgres
 import (
 	"context"
 	"fmt"
-	"iter"
 	"log"
 	"net/url"
 	"strings"
@@ -32,7 +31,7 @@ type ReplicationClient struct {
 
 func NewReplicationClient(tables []string, connCfg config.Connection) *ReplicationClient {
 	return &ReplicationClient{
-		publicationName: fmt.Sprintf("%s_%s", "trucker", connCfg.Database),
+		publicationName: fmt.Sprintf("trucker_%s", connCfg.Database),
 		tables:          tables,
 		connCfg:         connCfg,
 		running:         false,
@@ -83,7 +82,7 @@ ORDER BY ordinal_position`,
 	return newTables, uint64(backfillLSN), snapshotName
 }
 
-func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) chan iter.Seq[*db.Changeset] {
+func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) chan *db.Transaction {
 	if rc.running {
 		log.Fatalln("Replication is already running")
 	}
@@ -107,7 +106,7 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 	}
 	log.Println("Logical replication started on slot", rc.publicationName)
 
-	changes := make(chan iter.Seq[*db.Changeset])
+	changes := make(chan *db.Transaction)
 	rc.running = true
 
 	go func() {
@@ -186,7 +185,10 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 					log.Fatalln("ParseXLogData failed:", err)
 				}
 
-				changes <- makeChangesets(xld.WALData, rc.columnsCache)
+				changes <- &db.Transaction{
+					Position: uint64(xld.WALStart),
+					Changesets: makeChangesets(xld.WALData, rc.columnsCache),
+				}
 
 				if xld.WALStart > clientXLogPos {
 					clientXLogPos = xld.WALStart
@@ -211,8 +213,8 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 	return changes
 }
 
-func (rc *ReplicationClient) SetWrittenLSN(lsn pglogrepl.LSN) {
-	rc.writtenLSN = lsn
+func (rc *ReplicationClient) SetWrittenLSN(lsn uint64) {
+	rc.writtenLSN = pglogrepl.LSN(lsn)
 }
 
 func (rc *ReplicationClient) Close() {

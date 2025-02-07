@@ -105,8 +105,8 @@ got %T %v`, expectedRows, expectedRows, rows, rows)
 	processedChangeset := false
 
 	select {
-	case changesets := <-streamChan:
-		for changeset := range changesets {
+	case transaction := <-streamChan:
+		for changeset := range transaction.Changesets {
 			processedChangeset = true
 			if changeset.Operation != db.Insert {
 				t.Error("Expected insert operation, got", db.OperationStr(changeset.Operation))

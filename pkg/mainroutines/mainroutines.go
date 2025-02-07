@@ -102,8 +102,8 @@ func catchup(replicationClients map[string]*postgres.ReplicationClient, trucks m
 		if startLSN > 0 && endLSN > 0 {
 			changesChan := rc.Start(startLSN, endLSN)
 			for {
-				changesets := <-changesChan
-				if changesets == nil {
+				transaction := <-changesChan
+				if transaction == nil {
 					for _, truck := range trucks[connName] {
 						truck.Writer.SetCurrentPosition(endLSN)
 					}
@@ -111,13 +111,17 @@ func catchup(replicationClients map[string]*postgres.ReplicationClient, trucks m
 					break
 				}
 
-				for changeset := range changesets {
+				for changeset := range transaction.Changesets {
 					for _, truck := range trucks[connName] {
 						if !slices.Contains(skipTables[connName], changeset.Table) &&
 							slices.Contains(truck.InputTables, changeset.Table) {
 							truck.ProcessChangeset(changeset)
 						}
 					}
+				}
+
+				if transaction.Position > 0 {
+					rc.SetWrittenLSN(transaction.Position)
 				}
 			}
 		}
@@ -151,18 +155,21 @@ func streamChanges(trucksByInputConnection map[string][]*truck.Truck) {
 
 		changesChan := rc.Start(startLSN, 0)
 		for {
-			changesets := <-changesChan
+			transaction := <-changesChan
 
-			if changesets != nil {
-				for changeset := range changesets {
+			if transaction != nil {
+				for changeset := range transaction.Changesets {
 					for _, truck := range trucks {
 						if slices.Contains(truck.InputTables, changeset.Table) {
 							truck.ProcessChangeset(changeset)
 						}
 					}
 				}
+
+				if transaction.Position > 0 {
+					rc.SetWrittenLSN(transaction.Position)
+				}
 			}
-			// FIXME: advancing LSN on output DBs should happen right here instead of inside each truck
 		}
 	}
 }

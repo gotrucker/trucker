@@ -31,6 +31,8 @@ func NewWriter(inputConnectionName string, writeQuery string, cfg config.Connect
 	conn := NewConnection(cfg.User, cfg.Pass, cfg.Host, cfg.Port, cfg.Database)
 
 	return &Writer{
+		// FIXME: LSN tracking should be done per-truck, since writing the same
+		// change on multiple trucks can be interruped midway through
 		currentLsnTable: fmt.Sprintf("trucker_current_lsn__%s", inputConnectionName),
 		queryTemplate:   tmpl,
 		conn:            conn,

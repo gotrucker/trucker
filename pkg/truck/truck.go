@@ -87,13 +87,6 @@ func (t *Truck) Start() {
 
 		for {
 			select {
-			case <-t.KillChan:
-				log.Printf("[Truck %s] Received kill msg. Exiting...\n", t.Name)
-				t.ReplicationClient.Close()
-				t.Reader.Close()
-				t.Writer.Close()
-				close(t.ChangesChan)
-				return
 			case changeset := <-t.ChangesChan:
 				if changeset == nil {
 					log.Printf("[Truck %s] Changeset channel closed. Exiting...\n", t.Name)
@@ -108,6 +101,13 @@ func (t *Truck) Start() {
 				t.Writer.WithTransaction(func() {
 					t.Writer.Write(resultChangeset)
 				})
+			case <-t.KillChan:
+				log.Printf("[Truck %s] Received kill msg. Exiting...\n", t.Name)
+				t.ReplicationClient.Close()
+				t.Reader.Close()
+				t.Writer.Close()
+				close(t.ChangesChan)
+				return
 			}
 		}
 	}()

@@ -1,6 +1,9 @@
 package db
 
-import "fmt"
+import (
+	"fmt"
+	"iter"
+)
 
 const (
 	Insert uint8 = iota
@@ -26,6 +29,12 @@ type ChanChangeset struct {
 	Columns   []Column
 	Rows      chan [][]any
 }
+
+type Transaction struct {
+	Position uint64
+	Changesets iter.Seq[*Changeset]
+}
+
 
 type Reader interface {
 	Read(changeset *Changeset) *ChanChangeset
