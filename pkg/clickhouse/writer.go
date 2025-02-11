@@ -78,32 +78,15 @@ func (w *Writer) Write(changeset *db.ChanChangeset) {
 		panic(err)
 	}
 
-	typesLiteral := makeColumnTypesSql(changeset.Columns)
-	baseQuerySize := sql.Len() + typesLiteral.Len()
-	maxValuesListSize := w.getMaxQuerySize() - baseQuerySize
-
+	maxValuesListSize := w.getMaxQuerySize() - sql.Len()
 	valuesList, flatValues, excessRows := makeValuesList(changeset.Rows, maxValuesListSize, [][]any{})
 
 	if len(flatValues) == 0 {
 		log.Println("[Clickhouse Writer] Received empty changeset. Ignoring...")
 		return
-	} else if excessRows != nil && len(excessRows) > 0 {
-		// Crap... we'll need to insert everything in batches to a temporary
-		// table, and the run out output.sql from that table...
-		log.Println("[Clickhouse Writer] Writing changeset with more than 256k bytes. Using temporary table...")
-		w.prepareTempTable(changeset, valuesList, flatValues, excessRows, typesLiteral, maxValuesListSize)
-		defer w.conn.Exec(context.Background(), "DROP TABLE r")
-		flatValues = nil
-		tmplVars["rows"] = "r"
 	} else {
-		// It fits in a single query, so let's use a VALUES list to insert
-		sb := strings.Builder{}
-		sb.WriteString("VALUES('")
-		sb.WriteString(typesLiteral.String())
-		sb.WriteString("', ")
-		sb.WriteString(valuesList.String())
-		sb.WriteString(") r")
-		tmplVars["rows"] = sb.String()
+		w.prepareTempTable(changeset, valuesList, flatValues, excessRows, maxValuesListSize)
+		tmplVars["rows"] = "r"
 	}
 
 	sql = new(bytes.Buffer)
@@ -113,12 +96,9 @@ func (w *Writer) Write(changeset *db.ChanChangeset) {
 	}
 	sqlStr := sql.String()
 
-	err = w.conn.Exec(context.Background(), sqlStr, flatValues...)
+	err = w.conn.Exec(context.Background(), sqlStr)
 	if err != nil {
 		log.Printf("[Clickhouse Writer] Error executing SQL:\n%s", sqlStr)
-		for i, val := range flatValues {
-			log.Printf("[Clickhouse Writer] Val: %d = %v\n", i+1, val)
-		}
 		log.Println("[Clickhouse Writer] SQL length / Values length: ", uint64(len(sqlStr)), " / ", len(flatValues))
 		panic(err)
 	}
@@ -160,21 +140,22 @@ func (w *Writer) getMaxQuerySize() int {
 	return w.maxQuerySize
 }
 
-func (w *Writer) prepareTempTable(changeset *db.ChanChangeset, valuesList *strings.Builder, flatValues []any, extraRows [][]any, typesLiteral *strings.Builder, maxValuesListSize int) {
+func (w *Writer) prepareTempTable(changeset *db.ChanChangeset, valuesList *strings.Builder, flatValues []any, extraRows [][]any, maxValuesListSize int) {
+	w.conn.Exec(context.Background(), "DROP TABLE r")
+
 	// Create temporary table to store the rows
 	sb := strings.Builder{}
 	sb.WriteString("CREATE TEMPORARY TABLE r (")
-	sb.WriteString(typesLiteral.String())
+	sb.WriteString(makeColumnTypesSql(changeset.Columns).String())
 	sb.WriteByte(')')
 
 	err := w.conn.Exec(context.Background(), sb.String())
 	if err != nil {
-		log.Printf("[Clickhouse Writer] Error executing SQL:\n%s", sb.String())
+		log.Printf("[Clickhouse Writer] Error creating temporary table:\n%s", sb.String())
 		panic(err)
 	}
 
 	previousValuesLen := 0
-
 	for {
 		if sb.Len() == 0 || len(flatValues) != previousValuesLen {
 			sb = strings.Builder{}

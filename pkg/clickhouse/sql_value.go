@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"strings"
-	"unsafe"
 
 	"github.com/tonyfg/trucker/pkg/db"
 )
@@ -25,11 +24,9 @@ func makeColumnTypesSql(columns []db.Column) *strings.Builder {
 }
 
 func makeValuesList(rowChan chan [][]any, maxSize int, extraRows [][]any) (*strings.Builder, []any, [][]any) {
-	var rowSize int
 	var sb strings.Builder
 	values := make([]any, 0)
 
-	totalValueSize := 0
 	globalRowIdx := 0
 	for rowBatch := range rowChan {
 		// FIXME This will blow up memory usage if it turns out we only process
@@ -44,14 +41,6 @@ func makeValuesList(rowChan chan [][]any, maxSize int, extraRows [][]any) (*stri
 		}
 
 		for i, row := range allRows {
-			if rowSize == 0 {
-				for value := range row {
-					// TODO look into more reasonable way to get the size
-					// rowSize += len(fmt.Sprintf("%v", value))
-					rowSize += int(unsafe.Sizeof(value))
-				}
-			}
-
 			bytesWritten := 2 // 2 bytes from the 2 writes below
 			if globalRowIdx > 0 {
 				sb.WriteByte(',')
@@ -70,12 +59,11 @@ func makeValuesList(rowChan chan [][]any, maxSize int, extraRows [][]any) (*stri
 			}
 
 			sb.WriteByte(')')
+			bytesWritten += 1
 			values = append(values, row...)
-			bytesWritten += rowSize + 1
-			totalValueSize += rowSize
 
-			// TODO [PERFORMANCE] If we're inserting to a temporary table, then we don't need to count the size of the values. Counting just the size of the SQL string is enough.
-			if sb.Len()+totalValueSize+bytesWritten+rowSize >= maxSize {
+			// If we're about to exceed the max query size, return the current values
+			if sb.Len()+(bytesWritten*2) >= maxSize {
 				return &sb, values, allRows[i+1:]
 			}
 			globalRowIdx++
