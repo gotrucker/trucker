@@ -1,6 +1,3 @@
-// Clickhouse values literal:
-// SELECT * FROM VALUES('column1 Integer, column2 Integer', (1, 2), (3, 4))
-
 package clickhouse
 
 import (
@@ -21,63 +18,6 @@ func makeColumnTypesSql(columns []db.Column) *strings.Builder {
 	}
 
 	return &sb
-}
-
-func makeValuesList(rowChan chan [][]any, maxSize int, extraRows [][]any) (*strings.Builder, []any, [][]any) {
-	var sb strings.Builder
-	values := make([]any, 0)
-
-	globalRowIdx := 0
-	for rowBatch := range rowChan {
-		// FIXME This will blow up memory usage if it turns out we only process
-		// less than half of a rowBatch at a time, because we will have a
-		// growing amount of extra rows on every call.
-		var allRows [][]any
-		if globalRowIdx == 0 && len(extraRows) > 0 {
-			allRows = append(extraRows, rowBatch...)
-			extraRows = nil
-		} else {
-			allRows = rowBatch
-		}
-
-		for i, row := range allRows {
-			bytesWritten := 2 // 2 bytes from the 2 writes below
-			if globalRowIdx > 0 {
-				sb.WriteByte(',')
-			}
-			sb.WriteByte('(')
-
-			for j := range len(row) {
-				if j > 0 {
-					sb.WriteByte(',')
-					bytesWritten++
-				}
-
-				s := fmt.Sprintf("$%d", (globalRowIdx*len(row))+j+1)
-				sb.WriteString(s)
-				bytesWritten += len(s)
-			}
-
-			sb.WriteByte(')')
-			bytesWritten += 1
-			values = append(values, row...)
-
-			// If we're about to exceed the max query size, return the current values
-			if sb.Len()+(bytesWritten*2) >= maxSize {
-				return &sb, values, allRows[i+1:]
-			}
-			globalRowIdx++
-		}
-	}
-
-	if extraRows != nil && len(extraRows) > 0 {
-		extraRowChan := make(chan [][]any, 1)
-		extraRowChan <- extraRows
-		close(extraRowChan)
-		return makeValuesList(extraRowChan, maxSize, [][]any{})
-	}
-
-	return &sb, values, nil
 }
 
 // FIXME: This needs to return either the regular types or nullable types depending on whether we have null values... :/

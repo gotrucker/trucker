@@ -79,7 +79,8 @@ func (w *Writer) Write(changeset *db.ChanChangeset) {
 	defer conn.Release()
 
 	tmplVars := map[string]string{
-		"operation": db.OperationStr(changeset.Operation),
+		"operation":   db.OperationStr(changeset.Operation),
+		"input_table": changeset.Table,
 	}
 
 	columnsLiteral := makeColumnsList(changeset.Columns).String()

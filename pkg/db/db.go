@@ -31,10 +31,9 @@ type ChanChangeset struct {
 }
 
 type Transaction struct {
-	Position uint64
+	Position   uint64
 	Changesets iter.Seq[*Changeset]
 }
-
 
 type Reader interface {
 	Read(changeset *Changeset) *ChanChangeset

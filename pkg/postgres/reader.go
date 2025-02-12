@@ -23,6 +23,7 @@ type Reader struct {
 func NewReader(readQuery string, cfg config.Connection) *Reader {
 	tmpl, err := template.New("inputSql").Parse(readQuery)
 	if err != nil {
+		log.Println("Error parsing input SQL template:\n", readQuery)
 		panic(err)
 	}
 

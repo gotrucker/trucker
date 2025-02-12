@@ -3,12 +3,10 @@ package db
 import "fmt"
 
 const (
-	Int = iota
-	Int8
+	Int8 = iota
 	Int16
 	Int32
 	Int64
-	UInt
 	UInt8
 	UInt16
 	UInt32
@@ -24,12 +22,10 @@ const (
 
 	MapStringToString
 	// TODO: How can we deal with other kinds of Maps?
-	// MapStringToInt
 	// MapStringToInt8
 	// MapStringToInt16
 	// MapStringToInt32
 	// MapStringToInt64
-	// MapStringToUInt
 	// MapStringToUInt8
 	// MapStringToUInt16
 	// MapStringToUInt32
@@ -41,12 +37,10 @@ const (
 	// MapStringToDate
 	// MapStringToDateTime
 
-	IntArray
 	Int8Array
 	Int16Array
 	Int32Array
 	Int64Array
-	UIntArray
 	UInt8Array
 	UInt16Array
 	UInt32Array
@@ -64,8 +58,6 @@ const (
 
 func TypeStr(t uint8) string {
 	switch t {
-	case Int:
-		return "Int"
 	case Int8:
 		return "Int8"
 	case Int16:
@@ -74,8 +66,6 @@ func TypeStr(t uint8) string {
 		return "Int32"
 	case Int64:
 		return "Int64"
-	case UInt:
-		return "UInt"
 	case UInt8:
 		return "UInt8"
 	case UInt16:
@@ -102,8 +92,6 @@ func TypeStr(t uint8) string {
 		return "IPAddr"
 	case MapStringToString:
 		return "MapStringToString"
-	case IntArray:
-		return "IntArray"
 	case Int8Array:
 		return "Int8Array"
 	case Int16Array:
@@ -112,8 +100,6 @@ func TypeStr(t uint8) string {
 		return "Int32Array"
 	case Int64Array:
 		return "Int64Array"
-	case UIntArray:
-		return "UIntArray"
 	case UInt8Array:
 		return "UInt8Array"
 	case UInt16Array:
