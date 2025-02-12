@@ -63,8 +63,8 @@ func (w *Writer) GetCurrentPosition() uint64 {
 	var lsn proto.ColUInt64
 
 	if err := w.conn.Do(context.Background(), ch.Query{
-		Body: fmt.Sprintf("SELECT max(lsn) FROM %s", w.currentLsnTable),
-		Result: proto.Results{{Name: "lsn", Data: &lsn},},
+		Body:   fmt.Sprintf("SELECT max(lsn) FROM %s", w.currentLsnTable),
+		Result: proto.Results{{Name: "lsn", Data: &lsn}},
 	}); err != nil {
 		return 0
 	}
@@ -125,7 +125,7 @@ func (w *Writer) prepareTempTable(changeset *db.ChanChangeset) {
 			block = append(block, proto.InputColumn{Name: name, Data: col})
 		}
 
-		w.chDo(ch.Query{Body:  "INSERT INTO r VALUES", Input: block})
+		w.chDo(ch.Query{Body: "INSERT INTO r VALUES", Input: block})
 	}
 }
 

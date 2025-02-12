@@ -11,8 +11,8 @@ import (
 	"github.com/tonyfg/trucker/pkg/db"
 )
 
-const channelSize = 16
-const batchSize = 4096
+const channelSize = 2
+const batchSize = 50000
 
 func (rc *ReplicationClient) ReadBackfillData(table string, snapshotName string, readQuery string) *db.ChanChangeset {
 	var schema, tblName, nullFields string
@@ -28,13 +28,13 @@ func (rc *ReplicationClient) ReadBackfillData(table string, snapshotName string,
 	row := rc.conn.QueryRow(
 		context.Background(),
 		`SELECT string_agg(
-           CASE WHEN data_type = 'ARRAY' THEN
-             'NULL::' || substr(udt_name, 2) || '[] old__' || column_name
-           ELSE
-             'NULL::' || data_type || ' old__' || column_name
-           END,
-           ', '
-         )
+  CASE WHEN data_type = 'ARRAY' THEN
+    'NULL::' || substr(udt_name, 2) || '[] old__' || column_name
+  ELSE
+    'NULL::' || data_type || ' old__' || column_name
+  END,
+  ', '
+)
 FROM information_schema.columns
 WHERE table_schema = $1
   AND table_name = $2`,
@@ -77,6 +77,7 @@ WHERE table_schema = $1
 	fields := rows.FieldDescriptions()
 	columns := make([]db.Column, len(fields))
 	for i, field := range fields {
+		// TODO: can we see if a column is nullable here? Passing that information along, would be helpful for dealing with nullable/non-nullable columns further downstream
 		columns[i] = db.Column{
 			Name: field.Name,
 			Type: oidToDbType(field.DataTypeOID),
