@@ -11,8 +11,8 @@ import (
 	"github.com/tonyfg/trucker/pkg/db"
 )
 
-const channelSize = 2
-const batchSize = 50000
+const channelSize = 3
+const batchSize = 2000000
 
 func (rc *ReplicationClient) ReadBackfillData(table string, snapshotName string, readQuery string) *db.ChanChangeset {
 	var schema, tblName, nullFields string
@@ -99,7 +99,7 @@ WHERE table_schema = $1
 			close(rowChan)
 		}()
 
-		rowBatch := make([][]any, 0, batchSize)
+		rowBatch := make([][]any, 0, batchSize / len(columns))
 
 		for rows.Next() {
 			row, err := rows.Values()
@@ -109,7 +109,7 @@ WHERE table_schema = $1
 
 			rowBatch = append(rowBatch, row)
 
-			if len(rowBatch) == batchSize {
+			if len(rowBatch) >= batchSize / len(columns) {
 				rowChan <- rowBatch
 				rowBatch = make([][]any, 0, batchSize)
 			}

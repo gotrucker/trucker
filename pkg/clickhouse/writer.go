@@ -161,7 +161,7 @@ func appendValue(values map[string]proto.ColInput, col db.Column, row []any, i i
 		case db.Date:
 			values[col.Name] = &proto.ColDate32{}
 		case db.DateTime:
-			values[col.Name] = new(proto.ColDateTime64).WithPrecision(proto.PrecisionNano)
+			values[col.Name] = new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli)
 		case db.IPAddr:
 			values[col.Name] = &proto.ColIPv4{} //FIXME: What about IPv6?
 
