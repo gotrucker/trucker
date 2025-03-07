@@ -7,7 +7,8 @@
 # user
 UID=${shell id -u}
 GID=${shell id -g}
-
+FULL_VERSION=$$(git tag --points-at HEAD)
+MAJOR_VERSION=$$(echo $(FULL_VERSION) | cut -d. -f1)
 DOCKER_CLI_EXPERIMENTAL=enabled
 
 #####################
@@ -29,7 +30,7 @@ build:
 	@docker buildx create --use --name=crossplat --node=crossplat && \
 	docker buildx build \
 		--output "type=docker,push=false" \
-		--tag tonyfg/trucker:latest \
+		--tag tonyfg/trucker:$(FULL_VERSION) \
 		.
 
 push:
@@ -37,5 +38,6 @@ push:
 	docker buildx build \
 		--platform linux/386,linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64 \
 		--output "type=image,push=true" \
-		--tag tonyfg/trucker:latest \
+		--tag tonyfg/trucker:$(FULL_VERSION) \
+		--tag tonyfg/trucker:$(MAJOR_VERSION) \
 		.
