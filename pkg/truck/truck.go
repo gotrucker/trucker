@@ -3,6 +3,7 @@ package truck
 import (
 	"log"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/tonyfg/trucker/pkg/clickhouse"
@@ -29,6 +30,8 @@ type Truck struct {
 	KillChan          chan any
 	DoneChan          chan ExitMsg
 	CurrentPosition   uint64
+	pauseProcessing   bool
+	processingLock    sync.Mutex
 }
 
 func NewTruck(cfg config.Truck, rc *postgres.ReplicationClient, connCfgs map[string]config.Connection, doneChan chan ExitMsg) Truck {
@@ -77,6 +80,45 @@ func (t *Truck) Backfill(snapshotName string, targetLSN uint64, allTables []stri
 	log.Printf("[Truck %s] Backfill complete in %f seconds!\n", t.Name, time.Since(start).Seconds())
 }
 
+// BackfillIndependently runs a backfill for a single truck without interrupting streaming
+// on other trucks by using a dedicated replication client
+func (t *Truck) BackfillIndependently(tables []string) {
+	if len(tables) == 0 {
+		return
+	}
+	
+	start := time.Now()
+	log.Printf("[Truck %s] Running independent backfill for tables: %v\n", t.Name, tables)
+	
+	// Get a standalone backfill client
+	backfillRC, snapshotName, targetLSN := t.ReplicationClient.CreateBackfillClient()
+	defer backfillRC.Close() // Clean up when done
+	
+	// Run backfill with the separate client
+	for _, table := range tables {
+		changeset := backfillRC.ReadBackfillData(table, snapshotName, t.readQuery)
+		t.Writer.Write(changeset)
+	}
+	
+	// Update position tracking
+	curPos := t.Writer.GetCurrentPosition()
+	if curPos == 0 {
+		t.Writer.SetupPositionTracking()
+		t.Writer.SetCurrentPosition(targetLSN)
+		t.CurrentPosition = targetLSN
+	} else {
+		// Only update if the backfill LSN is newer
+		if targetLSN > curPos {
+			t.Writer.SetCurrentPosition(targetLSN)
+			t.CurrentPosition = targetLSN
+		} else {
+			t.CurrentPosition = curPos
+		}
+	}
+	
+	log.Printf("[Truck %s] Independent backfill complete in %f seconds!\n", t.Name, time.Since(start).Seconds())
+}
+
 func (t *Truck) Start() {
 	log.Printf("[Truck %s] Starting to read from replication stream...\n", t.Name)
 
@@ -114,7 +156,30 @@ func (t *Truck) Start() {
 }
 
 func (t *Truck) ProcessChangeset(changeset *db.Changeset) {
-	t.ChangesChan <- changeset
+	t.processingLock.Lock()
+	isPaused := t.pauseProcessing
+	t.processingLock.Unlock()
+	
+	if !isPaused {
+		t.ChangesChan <- changeset
+	}
+}
+
+// PauseProcessing pauses the truck's processing of changesets temporarily
+// useful when restarting replication streams
+func (t *Truck) PauseProcessing() {
+	t.processingLock.Lock()
+	defer t.processingLock.Unlock()
+	t.pauseProcessing = true
+	log.Printf("[Truck %s] Paused processing", t.Name)
+}
+
+// ResumeProcessing resumes the truck's processing of changesets
+func (t *Truck) ResumeProcessing() {
+	t.processingLock.Lock()
+	defer t.processingLock.Unlock()
+	t.pauseProcessing = false
+	log.Printf("[Truck %s] Resumed processing", t.Name)
 }
 
 func (t *Truck) Stop() {

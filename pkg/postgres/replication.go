@@ -225,8 +225,32 @@ func (rc *ReplicationClient) Close() {
 	}
 
 	rc.running = false
-	rc.streamConn.Close(context.Background())
-	rc.conn.Close(context.Background())
+	
+	// Only close connections if they exist
+	if rc.streamConn != nil {
+		rc.streamConn.Close(context.Background())
+	}
+	
+	if rc.conn != nil {
+		rc.conn.Close(context.Background())
+	}
+	
+	// Clean up temporary replication slot if this is a backfill client
+	if strings.Contains(rc.publicationName, "_backfill_") {
+		// Connect to drop the slot
+		tmpConn := rc.connect(true)
+		defer tmpConn.Close(context.Background())
+		
+		// Drop the temporary replication slot
+		pglogrepl.DropReplicationSlot(
+			context.Background(),
+			tmpConn.PgConn(),
+			rc.publicationName,
+			pglogrepl.DropReplicationSlotOptions{Wait: true},
+		)
+		
+		log.Printf("Dropped temporary replication slot: %s\n", rc.publicationName)
+	}
 }
 
 func (rc *ReplicationClient) setupPublication() []string {
@@ -339,6 +363,30 @@ func (rc *ReplicationClient) setupReplicationSlot(createBackfillSnapshot bool) (
 
 	log.Println("Replication slot is up:", rc.publicationName)
 	return currentLSN, backfillLSN, snapshotName
+}
+
+// CreateBackfillClient creates a standalone replication client specifically for backfilling
+// that won't interfere with streaming operations
+func (rc *ReplicationClient) CreateBackfillClient() (*ReplicationClient, string, uint64) {
+	// Create a new replication client with the same configuration
+	backfillRC := &ReplicationClient{
+		publicationName: fmt.Sprintf("%s_backfill_%d", rc.publicationName, time.Now().Unix()),
+		tables:          rc.tables,
+		connCfg:         rc.connCfg,
+		running:         false,
+		done:            make(chan bool, 1),
+		columnsCache:    rc.columnsCache, // Share the existing columns cache
+	}
+	
+	// Connect to the database
+	backfillRC.conn = backfillRC.connect(false)
+	backfillRC.streamConn = backfillRC.connect(true)
+	
+	// Create a temporary replication slot and get snapshot name
+	backfillLSN := backfillRC.identifySystem().XLogPos
+	snapshotName := backfillRC.createReplicationSlot(true)
+	
+	return backfillRC, snapshotName, uint64(backfillLSN)
 }
 
 func (rc *ReplicationClient) identifySystem() pglogrepl.IdentifySystemResult {

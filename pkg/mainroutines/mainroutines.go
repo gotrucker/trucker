@@ -72,6 +72,115 @@ func backfill(replicationClients map[string]*postgres.ReplicationClient, trucks 
 	return backfilledTables, backfillLSNs
 }
 
+// RequestBackfill initiates a backfill for specific tables on a specific truck
+// without pausing streaming for other trucks
+func RequestBackfill(targetTruck *truck.Truck, tables []string, trucksByInputConnection map[string][]*truck.Truck) {
+	if len(tables) == 0 {
+		return
+	}
+	
+	// Filter tables to only those that are configured for this truck
+	tablesToBackfill := make([]string, 0)
+	for _, table := range tables {
+		if slices.Contains(targetTruck.InputTables, table) {
+			tablesToBackfill = append(tablesToBackfill, table)
+		}
+	}
+	
+	if len(tablesToBackfill) == 0 {
+		log.Printf("[Truck %s] No matching tables to backfill\n", targetTruck.Name)
+		return
+	}
+	
+	// Store connection name for restarting replication later
+	connName := ""
+	for conn, trucks := range trucksByInputConnection {
+		for _, t := range trucks {
+			if t == targetTruck {
+				connName = conn
+				break
+			}
+		}
+		if connName != "" {
+			break
+		}
+	}
+	
+	// Start backfill in a separate goroutine to not block
+	go func() {
+		targetTruck.BackfillIndependently(tablesToBackfill)
+		
+		// After backfill completes, restart replication streams for all trucks on this connection
+		// to ensure backfilled truck can catch up
+		if connName != "" {
+			RestartReplicationStreams(connName, trucksByInputConnection)
+		}
+	}()
+}
+
+// RestartReplicationStreams restarts all replication streams for a given connection
+// to ensure backfilled trucks can catch up with ongoing streaming
+func RestartReplicationStreams(connName string, trucksByInputConnection map[string][]*truck.Truck) {
+	trucks := trucksByInputConnection[connName]
+	if len(trucks) == 0 {
+		return
+	}
+	
+	// Get the replication client (all trucks for this connection share the same client)
+	rc := trucks[0].ReplicationClient
+	
+	// Stop all current streams for these trucks
+	for _, t := range trucks {
+		// Don't close the channels, just pause processing
+		t.PauseProcessing()
+	}
+	
+	// Find the oldest LSN among all trucks to ensure all catch up
+	var oldestLSN uint64
+	for _, t := range trucks {
+		truckLSN := t.Writer.GetCurrentPosition()
+		if truckLSN < oldestLSN || oldestLSN == 0 {
+			oldestLSN = truckLSN
+		}
+	}
+	
+	log.Printf("Restarting replication streams for connection %s from LSN %d", connName, oldestLSN)
+	
+	// Reset the stream connection
+	rc.ResetStreamConn()
+	
+	// Resume all trucks
+	for _, t := range trucks {
+		t.ResumeProcessing()
+	}
+	
+	// Restart replication stream from the oldest LSN
+	changesChan := rc.Start(oldestLSN, 0)
+	
+	// Process changes in a new goroutine
+	go func() {
+		for {
+			transaction := <-changesChan
+			
+			if transaction == nil {
+				break
+			}
+			
+			for changeset := range transaction.Changesets {
+				for _, t := range trucks {
+					if slices.Contains(t.InputTables, changeset.Table) {
+						t.ProcessChangeset(changeset)
+					}
+				}
+			}
+			
+			if transaction.Position > 0 {
+				rc.SetWrittenLSN(transaction.Position)
+			}
+		}
+	}()
+}
+
 func catchup(replicationClients map[string]*postgres.ReplicationClient, trucks map[string][]*truck.Truck, skipTables map[string][]string, backfillLSNs map[string]uint64) {
 	for connName, rc := range replicationClients {
 		var startLSN uint64
