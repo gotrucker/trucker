@@ -1,3 +1,5 @@
+# Possibility to force SSL on db connections
+
 # Better logging
 We need to have logging levels at the very least:
 - WARN: Only startup/shutdown messages + stuff that is out of the ordinary
