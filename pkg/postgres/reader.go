@@ -27,7 +27,7 @@ func NewReader(readQuery string, cfg config.Connection) *Reader {
 		panic(err)
 	}
 
-	conn := NewConnection(cfg.User, cfg.Pass, cfg.Host, cfg.Port, cfg.Database, false)
+	conn := NewConnection(cfg.User, cfg.Pass, cfg.Host, cfg.Port, cfg.Ssl, cfg.Database, false)
 
 	return &Reader{queryTemplate: tmpl, conn: conn}
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/url"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -12,14 +13,22 @@ import (
 const defaultSliceCapacity = 32
 const minimumPoolSize = 2
 
-func NewConnection(user string, pass string, host string, port uint16, database string, replication bool) *pgxpool.Pool {
+func NewConnection(user string, pass string, host string, port uint16, ssl string, database string, replication bool) *pgxpool.Pool {
 	if port == 0 {
 		port = 5432
 	}
 
-	replicationParam := ""
+	params := make([]string, 0)
 	if replication {
-		replicationParam = "?replication=database"
+		params = append(params, "replication=database")
+	}
+	if ssl != "" {
+		params = append(params, fmt.Sprintf("sslmode=%s", ssl))
+	}
+
+	paramStr := strings.Join(params, "&")
+	if paramStr != "" {
+		paramStr = "?" + paramStr
 	}
 
 	connString := fmt.Sprintf(
@@ -29,7 +38,7 @@ func NewConnection(user string, pass string, host string, port uint16, database 
 		url.QueryEscape(host),
 		port,
 		url.QueryEscape(database),
-		replicationParam)
+		paramStr)
 
 	config, err := pgxpool.ParseConfig(connString)
 	if err != nil {

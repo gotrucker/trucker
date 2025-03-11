@@ -26,7 +26,7 @@ func NewWriter(inputConnectionName string, writeQuery string, cfg config.Connect
 		panic(err)
 	}
 
-	conn := NewConnection(cfg.User, cfg.Pass, cfg.Host, cfg.Port, cfg.Database, false)
+	conn := NewConnection(cfg.User, cfg.Pass, cfg.Host, cfg.Port, cfg.Ssl, cfg.Database, false)
 
 	return &Writer{
 		currentLsnTable: fmt.Sprintf("trucker_current_lsn__%s", inputConnectionName),
