@@ -24,6 +24,7 @@ var (
 		Adapter:  "postgres",
 		Host:     "pg_input",
 		Port:     5432,
+		Ssl:      "allow",
 		Database: "trucker",
 		User:     "trucker",
 	}

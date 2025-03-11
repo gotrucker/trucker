@@ -5,6 +5,7 @@ connections:
   database: trucker
   user: trucker
   pass: pgpass
+  ssl: prefer
 - name: chconn
   adapter: clickhouse
   host: clickhouse
