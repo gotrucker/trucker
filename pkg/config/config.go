@@ -14,11 +14,13 @@ type connectionYml struct {
 	Adapter      string `yaml:"adapter,omitempty"`
 	Host         string `yaml:"host,omitempty"`
 	Port         uint16 `yaml:"port,omitempty"`
+	Ssl          string `yaml:"ssl,omitempty"`
 	Database     string `yaml:"database,omitempty"`
 	User         string `yaml:"user,omitempty"`
 	Pass         string `yaml:"pass,omitempty"`
 	HostPath     string `yaml:"host_path,omitempty"`
 	PortPath     string `yaml:"port_path,omitempty"`
+	SslPath      string `yaml:"ssl_path,omitempty"`
 	DatabasePath string `yaml:"database_path,omitempty"`
 	UserPath     string `yaml:"user_path,omitempty"`
 	PassPath     string `yaml:"pass_path,omitempty"`
@@ -34,6 +36,7 @@ type Connection struct {
 	Host     string
 	Port     uint16
 	Database string
+	Ssl      string
 	User     string
 	Pass     string
 }
@@ -73,6 +76,7 @@ func connectionYmlToConnection(connYml connectionYml, basePath string) Connectio
 		Adapter:  connYml.Adapter,
 		Host:     connYml.Host,
 		Port:     connYml.Port,
+		Ssl:      connYml.Ssl,
 		Database: connYml.Database,
 		User:     connYml.User,
 		Pass:     connYml.Pass,
@@ -91,6 +95,10 @@ func connectionYmlToConnection(connYml connectionYml, basePath string) Connectio
 		}
 
 		connection.Port = uint16(port)
+	}
+
+	if connYml.SslPath != "" {
+		connection.Ssl = readFile(basePath, connYml.SslPath)
 	}
 
 	if connYml.DatabasePath != "" {

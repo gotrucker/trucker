@@ -1,10 +1,10 @@
-ARG GO_VERSION=1.23
+ARG GO_VERSION=1.24
 ARG GO_IMAGE=golang:${GO_VERSION}-alpine
 FROM $GO_IMAGE AS base
 RUN adduser -D trucker
 
 FROM --platform=${BUILDPLATFORM} base AS dev
-RUN apk add --no-cache postgresql16-client delve make
+RUN apk add --no-cache postgresql17-client delve make
 
 FROM --platform=${BUILDPLATFORM} base AS build
 ARG TARGETOS

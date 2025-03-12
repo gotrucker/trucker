@@ -5,3 +5,4 @@ connections:
   database: trucker
   user: trucker
   pass: pgpass
+  ssl: disable
