@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ClickHouse/ch-go"
+	"github.com/ClickHouse/ch-go/chpool"
 	"github.com/ClickHouse/ch-go/proto"
 
 	"github.com/tonyfg/trucker/pkg/config"
@@ -19,7 +20,7 @@ import (
 type Writer struct {
 	currentLsnTable string
 	queryTemplate   *template.Template
-	conn            *ch.Client
+	conn            *chpool.Pool
 	maxQuerySize    int
 	cfg             config.Connection
 }
@@ -35,7 +36,7 @@ func NewWriter(inputConnectionName string, writeQuery string, cfg config.Connect
 	return &Writer{
 		// FIXME: LSN tracking should be done per-truck, since writing the same
 		// change on multiple trucks can be interruped midway through
-		currentLsnTable: fmt.Sprintf("trucker_current_lsn__%s", inputConnectionName),
+		currentLsnTable: fmt.Sprintf(`"%s"."trucker_current_lsn__%s"`, cfg.Database, inputConnectionName),
 		queryTemplate:   tmpl,
 		conn:            conn,
 		cfg:             cfg,
@@ -43,7 +44,8 @@ func NewWriter(inputConnectionName string, writeQuery string, cfg config.Connect
 }
 
 func (w *Writer) SetupPositionTracking() {
-	w.chDo(ch.Query{
+	ctx := context.Background()
+	w.chDo(ctx, ch.Query{
 		Body: fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
 id Boolean DEFAULT true,
 lsn UInt64
@@ -52,18 +54,22 @@ ENGINE = ReplacingMergeTree(lsn)
 ORDER BY (id)`, w.currentLsnTable),
 	})
 
-	w.chDo(ch.Query{Body: fmt.Sprintf("INSERT INTO %s (lsn) VALUES (0)", w.currentLsnTable)})
+	w.chDo(ctx, ch.Query{
+		Body: fmt.Sprintf("INSERT INTO %s (lsn) VALUES (0)", w.currentLsnTable),
+	})
 }
 
 func (w *Writer) SetCurrentPosition(lsn uint64) {
-	w.chDo(ch.Query{Body: fmt.Sprintf("INSERT INTO %s (lsn) VALUES (%d)", w.currentLsnTable, lsn)})
+	w.chDo(context.Background(), ch.Query{
+		Body: fmt.Sprintf("INSERT INTO %s (lsn) VALUES (%d)", w.currentLsnTable, lsn),
+	})
 }
 
 func (w *Writer) GetCurrentPosition() uint64 {
 	var lsn proto.ColUInt64
 
 	if err := w.conn.Do(context.Background(), ch.Query{
-		Body:   fmt.Sprintf("SELECT max(lsn) FROM %s", w.currentLsnTable),
+		Body:   fmt.Sprintf("SELECT lsn FROM %s FINAL", w.currentLsnTable),
 		Result: proto.Results{{Name: "lsn", Data: &lsn}},
 	}); err != nil {
 		return 0
@@ -73,8 +79,15 @@ func (w *Writer) GetCurrentPosition() uint64 {
 }
 
 func (w *Writer) Write(changeset *db.ChanChangeset) {
-	w.prepareTempTable(changeset)
-	defer w.chDo(ch.Query{Body: "DROP TABLE r"})
+	ctx := context.Background()
+	conn, err := w.conn.Acquire(ctx)
+	if err != nil {
+		panic(err)
+	}
+	defer conn.Release()
+
+	w.prepareTempTable(ctx, conn, changeset)
+	defer conn.Do(ctx, ch.Query{Body: "DROP TEMPORARY TABLE IF EXISTS r"})
 
 	tmplVars := map[string]string{
 		"operation":   db.OperationStr(changeset.Operation),
@@ -83,33 +96,38 @@ func (w *Writer) Write(changeset *db.ChanChangeset) {
 	}
 
 	sql := new(bytes.Buffer)
-	err := w.queryTemplate.Execute(sql, tmplVars)
+	err = w.queryTemplate.Execute(sql, tmplVars)
 	if err != nil {
 		panic(err)
 	}
 
-	w.chDo(ch.Query{Body: sql.String()})
+	err = conn.Do(ctx, ch.Query{Body: sql.String()})
+	if err != nil {
+		panic(err)
+	}
 }
 
 func (w *Writer) TruncateTable(table string) {
-	w.chDo(ch.Query{Body: fmt.Sprintf("TRUNCATE TABLE %s", table)})
-}
-
-func (w *Writer) WithTransaction(f func()) {
-	f()
+	w.chDo(context.Background(), ch.Query{
+		Body:   fmt.Sprintf("TRUNCATE TABLE %s", table),
+		Result: proto.Results{},
+	})
 }
 
 func (w *Writer) Close() {
 	w.conn.Close()
 }
 
-func (w *Writer) prepareTempTable(changeset *db.ChanChangeset) {
+func (w *Writer) prepareTempTable(ctx context.Context, conn *chpool.Client, changeset *db.ChanChangeset) {
 	sb := strings.Builder{}
 	sb.WriteString("CREATE TEMPORARY TABLE r (")
 	sb.WriteString(makeColumnTypesSql(changeset.Columns).String())
 	sb.WriteByte(')')
 
-	w.chDo(ch.Query{Body: sb.String()})
+	err := conn.Do(ctx, ch.Query{Body: sb.String(), Result: proto.Results{}})
+	if err != nil {
+		panic(err)
+	}
 
 	for batch := range changeset.Rows {
 		values := make(map[string]proto.ColInput)
@@ -125,7 +143,10 @@ func (w *Writer) prepareTempTable(changeset *db.ChanChangeset) {
 			block = append(block, proto.InputColumn{Name: name, Data: col})
 		}
 
-		w.chDo(ch.Query{Body: "INSERT INTO r VALUES", Input: block})
+		err = conn.Do(ctx, ch.Query{Body: "INSERT INTO r VALUES", Input: block})
+		if err != nil {
+			panic(err)
+		}
 	}
 }
 
@@ -166,7 +187,7 @@ func appendValue(values map[string]proto.ColInput, col db.Column, row []any, i i
 			values[col.Name] = &proto.ColIPv4{} //FIXME: What about IPv6?
 
 		case db.MapStringToString:
-			values[col.Name] = proto.NewMap[string, string](&proto.ColStr{}, &proto.ColStr{})
+			values[col.Name] = proto.NewMap(&proto.ColStr{}, &proto.ColStr{})
 
 		case db.Int8Array:
 			values[col.Name] = proto.NewArrInt8()
@@ -191,23 +212,20 @@ func appendValue(values map[string]proto.ColInput, col db.Column, row []any, i i
 		case db.Float64Array:
 			values[col.Name] = proto.NewArrFloat64()
 		case db.BoolArray:
-			values[col.Name] = proto.NewArray[bool](&proto.ColBool{})
+			values[col.Name] = proto.NewArray(&proto.ColBool{})
 		case db.StringArray:
-			values[col.Name] = proto.NewArray[string](&proto.ColStr{})
+			values[col.Name] = proto.NewArray(&proto.ColStr{})
 		case db.DateArray:
 			values[col.Name] = proto.NewArrDate32()
 		case db.DateTimeArray:
-			values[col.Name] = proto.NewArray[time.Time](
+			values[col.Name] = proto.NewArray(
 				new(proto.ColDateTime64).WithPrecision(proto.PrecisionMilli),
 			)
 		case db.IPAddrArray:
 			values[col.Name] = proto.NewArrIPv4()
 		case db.MapStringToStringArray:
-			values[col.Name] = proto.NewArray[map[string]string](
-				proto.NewMap[string, string](
-					&proto.ColStr{},
-					&proto.ColStr{},
-				),
+			values[col.Name] = proto.NewArray(
+				proto.NewMap(&proto.ColStr{}, &proto.ColStr{}),
 			)
 
 		default:
@@ -362,18 +380,9 @@ func appendValue(values map[string]proto.ColInput, col db.Column, row []any, i i
 	}
 }
 
-func (w *Writer) chDo(query ch.Query) {
-	if err := w.conn.Do(context.Background(), query); err != nil {
-		if w.conn.IsClosed() {
-			w.conn = NewConnection(w.cfg.User, w.cfg.Pass, w.cfg.Host, w.cfg.Port, w.cfg.Database)
-
-			if err := w.conn.Do(context.Background(), query); err != nil {
-				log.Printf("[Clickhouse Writer] Error executing SQL:\n%s", query.Body)
-				panic(err)
-			}
-		} else {
-			log.Printf("[Clickhouse Writer] Error executing SQL:\n%s", query.Body)
-			panic(err)
-		}
+func (w *Writer) chDo(ctx context.Context, query ch.Query) {
+	if err := w.conn.Do(ctx, query); err != nil {
+		log.Printf("[Clickhouse Writer] Error executing SQL:\n%s", query.Body)
+		panic(err)
 	}
 }

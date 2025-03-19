@@ -6,6 +6,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/ClickHouse/ch-go"
+	"github.com/ClickHouse/ch-go/proto"
+
 	"github.com/tonyfg/trucker/pkg/db"
 	"github.com/tonyfg/trucker/test/helpers"
 )
@@ -16,34 +19,24 @@ func TestSetupPositionTracking(t *testing.T) {
 
 	// It should create the LSN tracking table
 	w.SetupPositionTracking()
-	err := w.conn.Exec(context.Background(), "SELECT * FROM trucker_current_lsn__test")
-	if err != nil {
-		t.Error(err)
-	}
+	w.chDo(context.Background(), ch.Query{
+		Body:   "SELECT lsn FROM trucker_current_lsn__test LIMIT 1",
+		Result: proto.AutoResult("lsn"),
+	}) // This will crash if the table doesn't exist
 
 	// If the table already exists that should be ok too...
 	w.SetupPositionTracking()
-	err = w.conn.Exec(context.Background(), "SELECT * FROM trucker_current_lsn__test")
-	if err != nil {
-		t.Error(err)
+
+	var theLsn proto.ColUInt64
+	if err := w.conn.Do(context.Background(), ch.Query{
+		Body:   "SELECT max(lsn) lsn FROM trucker_current_lsn__test",
+		Result: proto.Results{{Name: "lsn", Data: &theLsn}},
+	}); err != nil {
+		t.Error("Failed to query the LSN tracking table", err)
 	}
-
-	row := w.conn.QueryRow(context.Background(), "SELECT COUNT(*) FROM trucker_current_lsn__test")
-	var count uint64
-	row.Scan(&count)
-
-	if count != 1 {
-		t.Error("There should be exactly 1 row in the LSN tracking view, but found", count)
-	}
-
-	row = w.conn.QueryRow(context.Background(), "SELECT lsn FROM trucker_current_lsn__test")
-	var lsn uint64
-	row.Scan(&lsn)
-
-	if lsn != 0 {
+	if theLsn.Row(0) != 0 {
 		t.Error("Initial LSN should be zero")
 	}
-
 }
 
 func TestSetAndGetCurrentPosition(t *testing.T) {
@@ -52,14 +45,14 @@ func TestSetAndGetCurrentPosition(t *testing.T) {
 
 	lsn := w.GetCurrentPosition()
 	if lsn != 0 {
-		t.Errorf("Expected empty LSN, got %d", lsn)
+		t.Errorf("Expected LSN to be 0, got %d", lsn)
 	}
 
 	w.SetupPositionTracking()
 
 	lsn = w.GetCurrentPosition()
 	if lsn != 0 {
-		t.Errorf("Expected empty LSN, got %d", lsn)
+		t.Errorf("Expected LSN to be 0, got %d", lsn)
 	}
 
 	w.SetCurrentPosition(123)
@@ -75,46 +68,52 @@ func TestWrite(t *testing.T) {
 	w.SetupPositionTracking()
 
 	rows := make(chan [][]any, 1)
-	rows <- [][]any{{"1", "Green Spot", 10, "Single Pot Still", "Ireland"}}
+	rows <- [][]any{{"1", "Green Spot", int32(10), "Single Pot Still", "Ireland"}}
 	close(rows)
-	w.Write(
-		&db.ChanChangeset{
-			Operation: db.Insert,
-			Columns: []db.Column{
-				{Name: "id", Type: db.String},
-				{Name: "name", Type: db.String},
-				{Name: "age", Type: db.Int32},
-				{Name: "type", Type: db.String},
-				{Name: "country", Type: db.String},
-			},
-			Rows: rows,
+	w.Write(&db.ChanChangeset{
+		Operation: db.Insert,
+		Columns: []db.Column{
+			{Name: "id", Type: db.String},
+			{Name: "name", Type: db.String},
+			{Name: "age", Type: db.Int32},
+			{Name: "type", Type: db.String},
+			{Name: "country", Type: db.String},
 		},
-	)
+		Rows: rows,
+	})
 
-	row := w.conn.QueryRow(
-		context.Background(),
-		"SELECT id, name, age, type, country FROM trucker.v_whiskies_flat WHERE name = 'Green Spot'")
-	var id, name, whiskyType, country string
-	var age int32
-	row.Scan(&id, &name, &age, &whiskyType, &country)
+	var id, name, whiskyType, country proto.ColStr
+	var age proto.ColInt32
+	if err := w.conn.Do(context.Background(), ch.Query{
+		Body: "SELECT id, name, age, type, country FROM trucker.v_whiskies_flat WHERE name = 'Green Spot'",
+		Result: proto.Results{
+			{Name: "id", Data: &id},
+			{Name: "name", Data: &name},
+			{Name: "age", Data: &age},
+			{Name: "type", Data: &whiskyType},
+			{Name: "country", Data: &country},
+		},
+	}); err != nil {
+		t.Error("Failed to query v_whiskies_flat", err)
+	}
 
-	if id != "1" {
+	if id.Row(0) != "1" {
 		t.Error("Expected id = 1, got", id)
 	}
 
-	if name != "Green Spot" {
+	if name.Row(0) != "Green Spot" {
 		t.Error("Expected name = 'Green Spot', got", name)
 	}
 
-	if age != 20 {
+	if age.Row(0) != 20 {
 		t.Error("Expected age = 20, got", age)
 	}
 
-	if whiskyType != "Single Pot Still" {
+	if whiskyType.Row(0) != "Single Pot Still" {
 		t.Error("Expected whisky_type_id = 'Single Pot Still', got", whiskyType)
 	}
 
-	if country != "Ireland" {
+	if country.Row(0) != "Ireland" {
 		t.Error("Expected country = 'Ireland', got", country)
 	}
 }

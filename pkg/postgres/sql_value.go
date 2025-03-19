@@ -122,10 +122,9 @@ func makeColumnsList(columns []db.Column) (columnsLiteral *strings.Builder) {
 	return &sb
 }
 
-func makeValuesList(columns []db.Column, rows [][]any, withTypes bool) (valuesList *strings.Builder, values []any) {
-	valuesList = &strings.Builder{}
-	values = make([]any, 0)
-
+func makeValuesList(columns []db.Column, rows [][]any, withTypes bool) (*strings.Builder, []any) {
+	valuesList := &strings.Builder{}
+	values := make([]any, 0)
 	numCols := len(columns)
 	maxRows := (maxPreparedStatementArgs / numCols) - 1
 
@@ -164,32 +163,21 @@ func makeValuesList(columns []db.Column, rows [][]any, withTypes bool) (valuesLi
 	return valuesList, values
 }
 
-func makeValuesListFromRowChan(columns []db.Column, rowChan chan [][]any, extraRows [][]any, withTypes bool) (*strings.Builder, []any, [][]any) {
-	var valuesList = strings.Builder{}
-	values := make([]any, 0)
-
-	if len(extraRows) > 0 {
-		if len(extraRows) > maxPreparedStatementArgs {
-			valuesListBatch, valuesBatch := makeValuesList(columns, extraRows[:maxPreparedStatementArgs], withTypes)
-			return valuesListBatch, valuesBatch, extraRows[maxPreparedStatementArgs:]
-		} else {
-			valuesListBatch, valuesBatch := makeValuesList(columns, extraRows, withTypes)
-			return valuesListBatch, valuesBatch, [][]any{}
-		}
-	}
-
+func makeValuesListFromRowChan(columns []db.Column, rowChan chan [][]any, leftoverRows [][]any, withTypes bool) (*strings.Builder, []any, [][]any) {
+	maxRows := (maxPreparedStatementArgs / len(columns))
+	rows := leftoverRows
 	for rowBatch := range rowChan {
-		if len(values)+(len(rowBatch)*len(columns)) > maxPreparedStatementArgs {
-			extraRows = rowBatch
-			break
-		}
+		rows = append(rows, rowBatch...)
 
-		valuesListBatch, valuesBatch := makeValuesList(columns, rowBatch, withTypes)
-		valuesList.WriteString(valuesListBatch.String())
-		values = append(values, valuesBatch...)
+		if len(rows) > maxRows {
+			sql, params := makeValuesList(columns, rows[:maxRows], withTypes)
+			return sql, params, rows[maxRows:]
+		}
 	}
 
-	return &valuesList, values, extraRows
+	rowsToProcess := min(len(rows), maxRows)
+	sql, params := makeValuesList(columns, rows[:rowsToProcess], withTypes)
+	return sql, params, rows[rowsToProcess:]
 }
 
 func oidToDbType(oid uint32) uint8 {

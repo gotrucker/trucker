@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pglogrepl"
 
 	"github.com/tonyfg/trucker/pkg/config"
+	"github.com/tonyfg/trucker/pkg/db"
 	"github.com/tonyfg/trucker/pkg/postgres"
 	"github.com/tonyfg/trucker/pkg/truck"
 )
@@ -104,10 +105,6 @@ func catchup(replicationClients map[string]*postgres.ReplicationClient, trucks m
 			for {
 				transaction := <-changesChan
 				if transaction == nil {
-					for _, truck := range trucks[connName] {
-						truck.Writer.SetCurrentPosition(endLSN)
-					}
-
 					break
 				}
 
@@ -121,6 +118,10 @@ func catchup(replicationClients map[string]*postgres.ReplicationClient, trucks m
 				}
 
 				if transaction.Position > 0 {
+					for _, truck := range trucks[connName] {
+						changeset := &db.Changeset{UpdatedPosition: transaction.Position}
+						truck.ProcessChangeset(changeset)
+					}
 					rc.SetWrittenLSN(transaction.Position)
 				}
 			}
@@ -167,6 +168,10 @@ func streamChanges(trucksByInputConnection map[string][]*truck.Truck) {
 				}
 
 				if transaction.Position > 0 {
+					for _, truck := range trucks {
+						changeset := &db.Changeset{UpdatedPosition: transaction.Position}
+						truck.ProcessChangeset(changeset)
+					}
 					rc.SetWrittenLSN(transaction.Position)
 				}
 			}

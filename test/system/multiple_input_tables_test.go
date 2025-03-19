@@ -5,6 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ClickHouse/ch-go"
+	"github.com/ClickHouse/ch-go/proto"
+
 	"github.com/tonyfg/trucker/test/helpers"
 )
 
@@ -14,15 +17,23 @@ func TestMultipleInputTables(t *testing.T) {
 	chConn := helpers.PrepareClickhouseTestDb()
 	defer chConn.Close()
 
+	countWhiskies := func() uint64 {
+		var cnt proto.ColUInt64
+		if err := chConn.Do(context.Background(), ch.Query{
+			Body:   "SELECT count(*) cnt FROM trucker.v_whiskies_flat",
+			Result: proto.Results{{Name: "cnt", Data: &cnt}},
+		}); err != nil {
+			t.Error("Failed to query v_whiskies_flat", err)
+		}
+		return cnt.Row(0)
+	}
+
 	// Start trucker with a single table in the truck
 	exitChan := cloneProjectAndStart("postgres_to_clickhouse")
 
 	// Wait for backfill
 	for i := 0; ; i++ {
-		var cnt uint64
-		row := chConn.QueryRow(context.Background(), "SELECT count(*) FROM trucker.v_whiskies_flat")
-		row.Scan(&cnt)
-
+		cnt := countWhiskies()
 		if cnt == 4 {
 			break
 		} else if i > 10 {
@@ -36,10 +47,7 @@ func TestMultipleInputTables(t *testing.T) {
 	// Insert some stuff now that we're streaming
 	pgConn.Exec(context.Background(), "INSERT INTO public.whiskies (name, age, whisky_type_id) VALUES ('Jack Daniels', 5, 1)")
 	for i := 0; ; i++ {
-		var cnt uint64
-		row := chConn.QueryRow(context.Background(), "SELECT count(*) FROM trucker.v_whiskies_flat")
-		row.Scan(&cnt)
-
+		cnt := countWhiskies()
 		if cnt == 5 {
 			break
 		} else if i > 10 {
@@ -58,13 +66,11 @@ func TestMultipleInputTables(t *testing.T) {
 
 	// Start trucker with an extra table in the truck
 	exitChan = cloneProjectAndStart("multiple_input_tables")
+	defer close(exitChan)
 
 	// Check if backfill runs correctly with the data from the new table
 	for i := 0; ; i++ {
-		var cnt uint64
-		row := chConn.QueryRow(context.Background(), "SELECT count(*) FROM trucker.v_whiskies_flat")
-		row.Scan(&cnt)
-
+		cnt := countWhiskies()
 		if cnt == 8 {
 			break
 		} else if i > 10 {
@@ -79,10 +85,7 @@ func TestMultipleInputTables(t *testing.T) {
 	pgConn.Exec(context.Background(), "INSERT INTO public.whiskies (name, age, whisky_type_id) VALUES ('Last Whisky', 5, 1)")
 	pgConn.Exec(context.Background(), "INSERT INTO public.more_whiskies (name, age, whisky_type_id) VALUES ('More Last Whisky', 5, 1)")
 	for i := 0; ; i++ {
-		var cnt uint64
-		row := chConn.QueryRow(context.Background(), "SELECT count(*) FROM trucker.v_whiskies_flat")
-		row.Scan(&cnt)
-
+		cnt := countWhiskies()
 		if cnt == 10 {
 			break
 		} else if i > 10 {
@@ -92,6 +95,4 @@ func TestMultipleInputTables(t *testing.T) {
 
 		time.Sleep(300 * time.Millisecond)
 	}
-
-	close(exitChan)
 }

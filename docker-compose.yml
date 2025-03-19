@@ -80,7 +80,7 @@ services:
 
   # HTTP UI accessible at http://localhost/play
   clickhouse:
-    image: clickhouse/clickhouse-server:head
+    image: clickhouse/clickhouse-server:latest
     volumes:
     - clickhouse-data:/var/lib/clickhouse
     - /tmp/clickhouse-logs:/var/log/clickhouse-server

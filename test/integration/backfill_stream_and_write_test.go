@@ -6,7 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"github.com/ClickHouse/ch-go"
+	"github.com/ClickHouse/ch-go/proto"
 
 	"github.com/tonyfg/trucker/pkg/db"
 	"github.com/tonyfg/trucker/pkg/postgres"
@@ -76,7 +77,7 @@ GROUP BY id`,
 			Columns:   cols,
 			Rows:      rowChan,
 		}
-		w.WithTransaction(func() { w.Write(changeset) })
+		w.Write(changeset)
 	}
 
 	expectedColumns := []string{"id", "name", "age", "type", "country"}
@@ -100,6 +101,8 @@ got %T %v`, expectedColumns, expectedColumns, columns, columns)
 got %T %v`, expectedRows, expectedRows, rows, rows)
 	}
 
+	// TODO: Check that LSN moved forward
+
 	// Now let's stream Jack Daniels
 	streamChan := rc.Start(snapshotLsn, 0)
 	processedChangeset := false
@@ -113,7 +116,7 @@ got %T %v`, expectedRows, expectedRows, rows, rows)
 			}
 
 			result := r.Read(changeset)
-			w.WithTransaction(func() { w.Write(result) })
+			w.Write(result)
 		}
 	case <-time.After(3 * time.Second):
 		t.Error("Reading from channel took too long...")
@@ -122,6 +125,8 @@ got %T %v`, expectedRows, expectedRows, rows, rows)
 	if !processedChangeset {
 		t.Error("Expected to process a changeset, but didn't")
 	}
+
+	// TODO: Check that LSN moved forward
 
 	rc.Close()
 	changesets := <-streamChan
@@ -152,23 +157,30 @@ got %T %v`, expectedRows, expectedRows, rows, rows)
 	}
 }
 
-func loadWhiskiesFlat(t *testing.T, conn driver.Conn) ([]string, [][]any) {
-	rows, err := conn.Query(
+func loadWhiskiesFlat(t *testing.T, conn *ch.Client) ([]string, [][]any) {
+	var id, name, whiskyType, country proto.ColStr
+	var age proto.ColInt32
+	err := conn.Do(
 		context.Background(),
-		"SELECT id, name, age, type, country FROM trucker.v_whiskies_flat ORDER BY id",
+		ch.Query{
+			Body: "SELECT id, name, age, type, country FROM trucker.v_whiskies_flat ORDER BY id",
+			Result: proto.Results{
+				{Name: "id", Data: &id},
+				{Name: "name", Data: &name},
+				{Name: "age", Data: &age},
+				{Name: "type", Data: &whiskyType},
+				{Name: "country", Data: &country},
+			},
+		},
 	)
 	if err != nil {
 		t.Error(err)
 	}
-	defer rows.Close()
 
 	rowValues := make([][]any, 0, 1)
-	for i := 0; rows.Next(); i++ {
-		var id, name, whiskyType, country string
-		var age int32
-		rows.Scan(&id, &name, &age, &whiskyType, &country)
-		rowValues = append(rowValues, []any{id, name, age, whiskyType, country})
+	for i := range id.Rows() {
+		rowValues = append(rowValues, []any{id.Row(i), name.Row(i), age.Row(i), whiskyType.Row(i), country.Row(i)})
 	}
 
-	return rows.Columns(), rowValues
+	return []string{"id", "name", "age", "type", "country"}, rowValues
 }

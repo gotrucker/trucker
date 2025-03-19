@@ -1,5 +1,15 @@
 # Trucker
 
+Trucker is a SQL-based streaming ETL tool that allows reading a database
+replication stream, enriching that data by querying and JOINing other data in
+that database, then writing it out to another database (or another table in the
+same database).
+
+Trucker has very low latency, so new data is available in near real-time. This
+makes it suitable for scenarios like real-time analytics, maintaining search
+indexes, or calculating and storing aggregated data for display in interactive
+applications.
+
 # Objective
 Pick up data changes from postgres logical replication stream and allow getting
 the data, possibly enriched by an extra query to the database, optionally

@@ -54,6 +54,8 @@ const (
 	DateTimeArray
 	IPAddrArray
 	MapStringToStringArray
+
+	FinalValueDoNotUse
 )
 
 func TypeStr(t uint8) string {

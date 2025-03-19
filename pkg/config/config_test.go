@@ -29,6 +29,10 @@ func TestLoadConfig(t *testing.T) {
 		t.Error("Expected connection port = 0, got", conn.Port)
 	}
 
+	if conn.Ssl != "prefer" {
+		t.Error("Expected connection SSL = prefer, got", conn.Ssl)
+	}
+
 	if conn.Database != "trucker" {
 		t.Error("Expected connection database = trucker, got", conn.Database)
 	}

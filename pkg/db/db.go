@@ -17,10 +17,11 @@ type Column struct {
 }
 
 type Changeset struct {
-	Table     string
-	Operation uint8 // Insert, Update, or Delete
-	Columns   []Column
-	Rows      [][]any
+	Table           string
+	Operation       uint8 // Insert, Update, or Delete
+	Columns         []Column
+	Rows            [][]any
+	UpdatedPosition uint64
 }
 
 type ChanChangeset struct {
@@ -46,7 +47,6 @@ type Writer interface {
 	GetCurrentPosition() uint64
 	Write(changeset *ChanChangeset)
 	TruncateTable(table string)
-	WithTransaction(f func())
 	Close()
 }
 

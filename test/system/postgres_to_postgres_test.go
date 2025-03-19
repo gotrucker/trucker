@@ -15,6 +15,13 @@ func TestPostgresToPostgres(t *testing.T) {
 	conn := helpers.PreparePostgresTestDb()
 	defer conn.Close(context.Background())
 
+	currentPosition := func() uint64 {
+		var lsn uint64
+		row := conn.QueryRow(context.Background(), "SELECT lsn FROM trucker_current_lsn__pg_input_conn")
+		row.Scan(&lsn)
+		return lsn
+	}
+
 	exitChan := startTrucker("postgres_to_postgres")
 
 	// Test backfill
@@ -31,6 +38,11 @@ func TestPostgresToPostgres(t *testing.T) {
 		}
 
 		time.Sleep(300 * time.Millisecond)
+	}
+
+	curPos := currentPosition()
+	if curPos == 0 {
+		t.Error("Expected LSN to be non-zero after backfill")
 	}
 
 	// Test inserts
@@ -50,6 +62,12 @@ func TestPostgresToPostgres(t *testing.T) {
 		time.Sleep(300 * time.Millisecond)
 	}
 
+	newCurPos := currentPosition()
+	if newCurPos <= curPos {
+		t.Error("Expected LSN to have increased after inserts")
+	}
+	curPos = newCurPos
+
 	// Test updates
 	conn.Exec(context.Background(), "UPDATE public.whiskies SET age = 7, name = 'Jack Daniels 2' WHERE name = 'Jack Daniels'")
 	for i := 0; ; i++ {
@@ -66,6 +84,12 @@ func TestPostgresToPostgres(t *testing.T) {
 
 		time.Sleep(500 * time.Millisecond)
 	}
+
+	newCurPos = currentPosition()
+	if newCurPos <= curPos {
+		t.Error("Expected LSN to have increased after updates")
+	}
+	curPos = newCurPos
 
 	// Check row we inserted/updated for correct data
 	var id, age int32
@@ -94,6 +118,12 @@ func TestPostgresToPostgres(t *testing.T) {
 		time.Sleep(300 * time.Millisecond)
 	}
 
+	newCurPos = currentPosition()
+	if newCurPos <= curPos {
+		t.Error("Expected LSN to have increased after deletes")
+	}
+	curPos = newCurPos
+
 	row = conn.QueryRow(context.Background(), "SELECT name, age, type, country FROM whiskies_flat WHERE id = $1", id)
 	var name string
 	typeName = ""
@@ -113,7 +143,7 @@ func TestPostgresToPostgresLarge(t *testing.T) {
 
 	insertValues := strings.Builder{}
 	insertValues.WriteString("INSERT INTO whiskies (name, age, whisky_type_id) VALUES ('Blargh', 1, 1)")
-	for i := 0; i < 15000; i++ {
+	for i := range 15000 {
 		insertValues.WriteString(fmt.Sprintf(",('whisky_%d',1,2)", i))
 	}
 	_, err := conn.Exec(context.Background(), insertValues.String())
@@ -172,7 +202,7 @@ but got %v: `, expectedResult, allRows)
 			break
 		}
 
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(300 * time.Millisecond)
 	}
 
 	close(exitChan)

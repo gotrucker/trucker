@@ -8,6 +8,8 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/tonyfg/trucker/pkg/db"
 )
 
@@ -25,8 +27,9 @@ func (rc *ReplicationClient) ReadBackfillData(table string, snapshotName string,
 		tblName = schemaAndTable[1]
 	}
 
+	ctx := context.Background()
 	row := rc.conn.QueryRow(
-		context.Background(),
+		ctx,
 		`SELECT string_agg(
   CASE WHEN data_type = 'ARRAY' THEN
     'NULL::' || substr(udt_name, 2) || '[] old__' || column_name
@@ -58,17 +61,17 @@ WHERE table_schema = $1
 	sql := new(bytes.Buffer)
 	err = tmpl.Execute(sql, tmplVars)
 
-	_, err = rc.conn.Exec(context.Background(), "BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+	tx, err := rc.conn.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
 	if err != nil {
 		panic(err)
 	}
 
-	_, err = rc.conn.Exec(context.Background(), fmt.Sprintf("SET TRANSACTION SNAPSHOT '%s'", snapshotName))
+	_, err = tx.Exec(context.Background(), fmt.Sprintf("SET TRANSACTION SNAPSHOT '%s'", snapshotName))
 	if err != nil {
 		panic(err)
 	}
 
-	rows, err := rc.conn.Query(context.Background(), sql.String())
+	rows, err := tx.Query(context.Background(), sql.String())
 	if err != nil {
 		log.Printf("[Postgres Backfiller] Error running query:\n%s\n", sql.String())
 		panic(err)
@@ -89,7 +92,7 @@ WHERE table_schema = $1
 	// TODO This go routine is basically the same between reader and backfill. Refactor to avoid dups
 	go func() {
 		defer func() {
-			_, err := rc.conn.Exec(context.Background(), "ROLLBACK")
+			err := tx.Rollback(ctx)
 			if err != nil && rc.running {
 				panic(err)
 			}
@@ -99,7 +102,7 @@ WHERE table_schema = $1
 			close(rowChan)
 		}()
 
-		rowBatch := make([][]any, 0, batchSize / len(columns))
+		rowBatch := make([][]any, 0, batchSize/len(columns))
 
 		for rows.Next() {
 			row, err := rows.Values()
@@ -109,7 +112,7 @@ WHERE table_schema = $1
 
 			rowBatch = append(rowBatch, row)
 
-			if len(rowBatch) >= batchSize / len(columns) {
+			if len(rowBatch) >= batchSize/len(columns) {
 				rowChan <- rowBatch
 				rowBatch = make([][]any, 0, batchSize)
 			}

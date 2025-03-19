@@ -6,7 +6,6 @@ toolchain go1.23.3
 
 require (
 	github.com/ClickHouse/ch-go v0.65.1
-	github.com/ClickHouse/clickhouse-go/v2 v2.33.0
 	github.com/jackc/pglogrepl v0.0.0-20240307033717-828fbfe908e9
 	github.com/jackc/pgx/v5 v5.7.2
 	gopkg.in/yaml.v2 v2.4.0

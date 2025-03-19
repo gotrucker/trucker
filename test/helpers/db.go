@@ -9,8 +9,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/ClickHouse/clickhouse-go/v2"
-	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"github.com/ClickHouse/ch-go"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/tonyfg/trucker/pkg/config"
@@ -51,15 +50,17 @@ func PreparePostgresTestDb() *pgx.Conn {
 	return conn
 }
 
-func PrepareClickhouseTestDb() driver.Conn {
-	conn, err := clickhouse.Open(&clickhouse.Options{
-		Addr: []string{fmt.Sprintf("%s:%d", ClickhouseCfg.Host, ClickhouseCfg.Port)},
-		Auth: clickhouse.Auth{
-			Database: ClickhouseCfg.Database,
-			Username: ClickhouseCfg.User,
-			Password: ClickhouseCfg.Pass,
+func PrepareClickhouseTestDb() *ch.Client {
+	conn, err := ch.Dial(
+		context.Background(),
+		ch.Options{
+			Address:    fmt.Sprintf("%s:%d", ClickhouseCfg.Host, ClickhouseCfg.Port),
+			Database:   ClickhouseCfg.Database,
+			User:       ClickhouseCfg.User,
+			Password:   ClickhouseCfg.Pass,
+			ClientName: "trucker",
 		},
-	})
+	)
 	if err != nil {
 		panic(err)
 	}
@@ -68,7 +69,7 @@ func PrepareClickhouseTestDb() driver.Conn {
 	stmts := strings.Split(sql, ";\n\n")
 
 	for _, stmt := range stmts {
-		err = conn.Exec(context.Background(), stmt)
+		err := conn.Do(context.Background(), ch.Query{Body: stmt})
 		if err != nil {
 			panic(err)
 		}
