@@ -1,32 +1,31 @@
 # Trucker
 
-Trucker is a SQL-based streaming ETL tool that allows reading a database
-replication stream, enriching that data by querying and JOINing other data in
-that database, then writing it out to another database (or another table in the
-same database).
+Trucker is a SQL-based streaming ETL tool that reads a database replication
+stream, allows enriching replicated changes by querying and JOINing other data
+from that database, then writes the result out to another database (or another
+table in the same database).
+The way reads and writes are done is fully controlled by the user, through
+writing the SQL queries that do the reading and writing.
 
-Trucker has very low latency, so new data is available in near real-time. This
+Trucker has very low latency, so new data is written out in near real-time. This
 makes it suitable for scenarios like real-time analytics, maintaining search
 indexes, or calculating and storing aggregated data for display in interactive
-applications.
+applications. It can be a good replacement for database triggers, incremental
+materialized views, data pipelines that involve complex infrastructure, etc.
 
-# Objective
-Pick up data changes from postgres logical replication stream and allow getting
-the data, possibly enriched by an extra query to the database, optionally
-transform it, then output to some datastore (for now, the same or another
-postgres db)
+# Supported databases
 
-# Similar projects
-- pgstream: https://github.com/xataio/pgstream
-- pgdeltastream: https://github.com/hasura/pgdeltastream
-- PeerDB: https://www.peerdb.io/
-- pg_flo: https://www.pgflo.io/
-- BemiDB: https://github.com/BemiHQ/BemiDB
-- Materialize
-- Feldera
-- Striim
-- https://github.com/electric-sql/electric
-- Check this out for more ideas: https://github.com/DataExpert-io/data-engineer-handbook
+| Database   | Reading | Writing |
+| ---------- | ------- | ------- |
+| PostgreSQL | Yes     | Yes     |
+| Clickhouse | No      | Yes     |
+
+# Installing (TODO)
+- Download binaries from releases page
+- Docker
+- Build from source
+
+
 
 # How to define a data pipeline
 - Each pipeline has it's own folder with some files inside
@@ -102,6 +101,20 @@ https://pkg.go.dev/go.uber.org/zap
 - Revamp streamer/backfill/reader interface to actually hide the reader call. no need for a common interface there since the Read() method doesn't need to be called by the truck at all... We could just have the Backfill(), Start(), and Stop() methods, with Read() being internally implemented. This could allow some advantages in using DB-specific functionality.
 - Integrate DuckDB as a library to allow having lots more input / output sources
 - Large tests with TPC-DS dataset and some gnarly scenarios
+
+# Similar projects
+- pgstream: https://github.com/xataio/pgstream
+- pgdeltastream: https://github.com/hasura/pgdeltastream
+- PeerDB: https://www.peerdb.io/
+- pg_flo: https://www.pgflo.io/
+- BemiDB: https://github.com/BemiHQ/BemiDB
+- Materialize
+- Feldera
+- Striim
+- https://github.com/electric-sql/electric
+- Check this out for more ideas: https://github.com/DataExpert-io/data-engineer-handbook
+
+
 
 # Questions
 

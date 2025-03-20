@@ -4,7 +4,7 @@ FROM $GO_IMAGE AS base
 RUN adduser -D trucker
 
 FROM --platform=${BUILDPLATFORM} base AS dev
-RUN apk add --no-cache postgresql17-client delve make
+RUN apk add --no-cache postgresql17-client delve make git
 
 FROM --platform=${BUILDPLATFORM} base AS build
 ARG TARGETOS
@@ -19,7 +19,8 @@ RUN --mount=type=cache,target=/go/pkg/mod/ \
     --mount=type=bind,source=go.sum,target=go.sum \
     --mount=type=bind,source=go.mod,target=go.mod \
     --mount=type=cache,target="/root/.cache/go-build" \
-    go build -ldflags="-s -w"
+    apk add --no-cache git && \
+    go build -v -ldflags="-s -w -X main.version=$(git tag --points-at HEAD)"
 
 FROM scratch
 COPY --from=build /src/trucker /trucker

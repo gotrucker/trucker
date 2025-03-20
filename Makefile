@@ -26,14 +26,14 @@ clean:
 	docker compose rm -f -s -v
 	docker image rm -f trucker-go trucker-pg_input trucker-pg_input_replica trucker-pg_output pg-with-wal2json
 
-build:
+build_images:
 	@docker buildx create --use --name=crossplat --node=crossplat && \
 	docker buildx build \
 		--output "type=docker,push=false" \
 		--tag tonyfg/trucker:$(FULL_VERSION) \
 		.
 
-push:
+push_images:
 	@docker buildx create --use --name=crossplat --node=crossplat && \
 	docker buildx build \
 		--platform linux/386,linux/amd64,linux/arm/v6,linux/arm/v7,linux/arm64 \
