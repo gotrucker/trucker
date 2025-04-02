@@ -66,6 +66,7 @@ func (t *Truck) Backfill(snapshotName string, targetLSN uint64, allTables []stri
 
 	curPos := t.Writer.GetCurrentPosition()
 	if curPos == 0 {
+		log.Printf("[Truck %s] Setting up stream position tracking in output database...\n", t.Name)
 		t.Writer.SetupPositionTracking()
 		t.Writer.SetCurrentPosition(targetLSN)
 	}
