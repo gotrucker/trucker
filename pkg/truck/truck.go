@@ -89,15 +89,14 @@ func (t *Truck) Start() {
 					return
 				}
 
-				if changeset.UpdatedPosition != 0 {
-					t.Writer.SetCurrentPosition(changeset.UpdatedPosition)
-				} else {
-					resultChangeset := t.Reader.Read(changeset)
-					if resultChangeset == nil {
-						continue
-					}
+				resultChangeset := t.Reader.Read(changeset)
+				if resultChangeset == nil {
+					continue
+				}
 
-					t.Writer.Write(resultChangeset)
+				t.Writer.Write(resultChangeset)
+				if changeset.StreamPosition != 0 {
+					t.Writer.SetCurrentPosition(changeset.StreamPosition)
 				}
 			case <-t.KillChan:
 				log.Printf("[Truck %s] Received kill msg. Exiting...\n", t.Name)

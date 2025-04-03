@@ -8,7 +8,6 @@ import (
 	"github.com/jackc/pglogrepl"
 
 	"github.com/tonyfg/trucker/pkg/config"
-	"github.com/tonyfg/trucker/pkg/db"
 	"github.com/tonyfg/trucker/pkg/postgres"
 	"github.com/tonyfg/trucker/pkg/truck"
 )
@@ -109,6 +108,7 @@ func catchup(replicationClients map[string]*postgres.ReplicationClient, trucks m
 				}
 
 				for changeset := range transaction.Changesets {
+					changeset.StreamPosition = transaction.StreamPosition
 					for _, truck := range trucks[connName] {
 						if !slices.Contains(skipTables[connName], changeset.Table) &&
 							slices.Contains(truck.InputTables, changeset.Table) {
@@ -117,12 +117,8 @@ func catchup(replicationClients map[string]*postgres.ReplicationClient, trucks m
 					}
 				}
 
-				if transaction.Position > 0 {
-					for _, truck := range trucks[connName] {
-						changeset := &db.Changeset{UpdatedPosition: transaction.Position}
-						truck.ProcessChangeset(changeset)
-					}
-					rc.SetWrittenLSN(transaction.Position)
+				if transaction.StreamPosition > 0 {
+					rc.SetWrittenLSN(transaction.StreamPosition)
 				}
 			}
 		}
@@ -160,6 +156,7 @@ func streamChanges(trucksByInputConnection map[string][]*truck.Truck) {
 
 			if transaction != nil {
 				for changeset := range transaction.Changesets {
+					changeset.StreamPosition = transaction.StreamPosition
 					for _, truck := range trucks {
 						if slices.Contains(truck.InputTables, changeset.Table) {
 							truck.ProcessChangeset(changeset)
@@ -167,12 +164,8 @@ func streamChanges(trucksByInputConnection map[string][]*truck.Truck) {
 					}
 				}
 
-				if transaction.Position > 0 {
-					for _, truck := range trucks {
-						changeset := &db.Changeset{UpdatedPosition: transaction.Position}
-						truck.ProcessChangeset(changeset)
-					}
-					rc.SetWrittenLSN(transaction.Position)
+				if transaction.StreamPosition > 0 {
+					rc.SetWrittenLSN(transaction.StreamPosition)
 				}
 			}
 		}

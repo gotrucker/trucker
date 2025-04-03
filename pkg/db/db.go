@@ -21,7 +21,7 @@ type Changeset struct {
 	Operation       uint8 // Insert, Update, or Delete
 	Columns         []Column
 	Rows            [][]any
-	UpdatedPosition uint64
+	StreamPosition  uint64
 }
 
 type ChanChangeset struct {
@@ -32,7 +32,7 @@ type ChanChangeset struct {
 }
 
 type Transaction struct {
-	Position   uint64
+	StreamPosition   uint64
 	Changesets iter.Seq[*Changeset]
 }
 
