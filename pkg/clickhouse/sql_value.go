@@ -2,7 +2,6 @@ package clickhouse
 
 import (
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/tonyfg/trucker/pkg/db"
@@ -92,7 +91,7 @@ func dbTypeToChType(dbType uint8) string {
 	case db.MapStringToStringArray:
 		return "Array(Map(String, String))"
 	default:
-		log.Printf("[Clickhouse SQL Value] Unknown type %d, treating as String...\n", dbType)
+		log.Warn(fmt.Sprintf("Unknown type %s, treating as String...\n", db.TypeStr(dbType)))
 		return "String"
 	}
 }

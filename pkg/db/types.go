@@ -1,6 +1,10 @@
 package db
 
-import "fmt"
+import (
+	"fmt"
+	"log/slog"
+	"os"
+)
 
 const (
 	Int8 = iota
@@ -129,6 +133,8 @@ func TypeStr(t uint8) string {
 	case MapStringToStringArray:
 		return "MapStringToStringArray"
 	default:
-		panic(fmt.Sprintf("Unknown type %d\n", t))
+		slog.Error("db", "msg", fmt.Sprintf("Unknown type %d", t))
+		os.Exit(1)
+		return "" // Go compiler goes nuts if we don't return something
 	}
 }

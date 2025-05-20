@@ -1,3 +1,6 @@
+unique_id: 2
+log_style: json
+log_level: debug
 connections:
 - name: pg_input_conn
   adapter: postgres

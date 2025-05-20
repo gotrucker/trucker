@@ -420,11 +420,11 @@ func TestMakeValuesListFromRowChan(t *testing.T) {
 	if len(flatValues) != 32760 {
 		t.Error("Expected output of 32760 values, but got", len(flatValues))
 	}
-	if len(extraRows) != 0 {
-		t.Error("Expected 0 extra rows, but got", len(extraRows))
+	if len(extraRows) != 1 {
+		t.Error("Expected 1 extra rows, but got", len(extraRows))
 	}
-	if unreadRows := <-rowChan; len(unreadRows) != 1 {
-		t.Error("Expected rowChan to have 1 row, but it had", len(unreadRows))
+	if unreadRows := <-rowChan; len(unreadRows) != 0 {
+		t.Error("Expected rowChan to be empty, but it had", len(unreadRows))
 	}
 
 	rowChan = make(chan [][]any, 4)

@@ -1,21 +1,15 @@
 package mainroutines
 
 import (
-	"log"
-	"path/filepath"
+	"log/slog"
 	"slices"
-
-	"github.com/jackc/pglogrepl"
 
 	"github.com/tonyfg/trucker/pkg/config"
 	"github.com/tonyfg/trucker/pkg/postgres"
 	"github.com/tonyfg/trucker/pkg/truck"
 )
 
-func Start(projectPath string) (chan truck.ExitMsg, []config.Truck, map[string][]*truck.Truck) {
-	ymlPath := filepath.Join(projectPath, "trucker.yml")
-	cfg := config.Load(ymlPath)
-	truckCfgs := config.LoadTrucks(projectPath, cfg)
+func Start(cfg config.Config, truckCfgs []config.Truck) (chan truck.ExitMsg, []config.Truck, map[string][]*truck.Truck) {
 	doneChan := make(chan truck.ExitMsg, len(truckCfgs))
 
 	replicatedTablesPerConnection := make(map[string][]string)
@@ -59,7 +53,6 @@ func backfill(replicationClients map[string]*postgres.ReplicationClient, trucks 
 	for connName, rc := range replicationClients {
 		tablesToBackfill, backfillLSN, snapshotName := rc.Setup()
 		defer rc.ResetStreamConn()
-		log.Println("Backfill LSN", pglogrepl.LSN(backfillLSN))
 
 		for _, truck := range trucks[connName] {
 			truck.Backfill(snapshotName, backfillLSN, tablesToBackfill)
@@ -89,7 +82,7 @@ func catchup(replicationClients map[string]*postgres.ReplicationClient, trucks m
 				continue
 			}
 
-			log.Printf("[Truck %s] Catching up to latest stream position...\n", truck.Name)
+			slog.Info("main", "truck", truck.Name, "msg", "Catching up to latest stream position...")
 
 			truckLSN := truck.Writer.GetCurrentPosition()
 			if truckLSN < startLSN || startLSN == 0 {
@@ -121,6 +114,8 @@ func catchup(replicationClients map[string]*postgres.ReplicationClient, trucks m
 					rc.SetWrittenLSN(transaction.StreamPosition)
 				}
 			}
+
+			slog.Info("main", "msg", "All trucks caught up to latest stream position.")
 		}
 	}
 }

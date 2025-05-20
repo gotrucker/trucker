@@ -1,7 +1,8 @@
 package config
 
 import (
-	"log"
+	"fmt"
+	"log/slog"
 	"os"
 
 	"path/filepath"
@@ -24,7 +25,8 @@ type Truck struct {
 func LoadTrucks(projectPath string, cfg Config) []Truck {
 	ymlPaths, err := filepath.Glob(filepath.Join(projectPath, "*", "truck.yml"))
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("config", "msg", err)
+		os.Exit(1)
 	}
 
 	trucks := make([]Truck, 0, 1)
@@ -32,13 +34,15 @@ func LoadTrucks(projectPath string, cfg Config) []Truck {
 		trucks = append(trucks, loadTruck(ymlPath, cfg))
 	}
 
+	slog.Info("config", "msg", fmt.Sprintf("Loaded %d trucks", len(trucks)))
 	return trucks
 }
 
 func loadTruck(path string, cfg Config) Truck {
 	envMap, err := envToMap()
 	if err != nil {
-		log.Fatal(err)
+		slog.Error("config", "msg", err)
+		os.Exit(1)
 	}
 
 	truck := loadYml(path, Truck{}, envMap)
@@ -68,11 +72,6 @@ func loadTruck(path string, cfg Config) Truck {
 
 	if truck.Input.Table != "" {
 		truck.Input.Tables = append(truck.Input.Tables, truck.Input.Table)
-	}
-	log.Printf("[Truck %s] configured for:\n", truck.Name)
-
-	for _, table := range truck.Input.Tables {
-		log.Printf("- %s:%s -> %s\n", truck.Input.Connection, table, truck.Output.Connection)
 	}
 
 	return truck

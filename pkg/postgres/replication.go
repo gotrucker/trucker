@@ -75,22 +75,18 @@ ORDER BY ordinal_position`,
 	}
 
 	newTables := rc.setupPublication()
-	currentLSN, backfillLSN, snapshotName := rc.setupReplicationSlot(len(newTables) > 0)
-
-	log.Println("Current LSN:", currentLSN, "Backfill LSN:", backfillLSN, "Snapshot name:", snapshotName)
+	_, backfillLSN, snapshotName := rc.setupReplicationSlot(len(newTables) > 0)
 
 	return newTables, uint64(backfillLSN), snapshotName
 }
 
 func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) chan *db.Transaction {
 	if rc.running {
-		log.Fatalln("Replication is already running")
+		log.Fatalf("Replication was already running for database %s. Publication name = %s\n", rc.connCfg.Name, rc.publicationName)
 	}
 
 	startLSN := pglogrepl.LSN(startPosition)
 	endLSN := pglogrepl.LSN(endPosition)
-	log.Println("Replicating startLSN:", startPosition, startLSN)
-	log.Println("Replicating endLSN:", endPosition, endLSN)
 
 	conn := rc.streamConn.PgConn()
 
@@ -102,9 +98,9 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 		pglogrepl.StartReplicationOptions{},
 	)
 	if err != nil {
-		log.Fatalln("StartReplication failed:", err)
+		log.Fatalf("Error starting logical replication for database %s. Publication name = %s: %s\n", rc.connCfg.Name, rc.publicationName, err)
 	}
-	log.Println("Logical replication started on slot", rc.publicationName)
+	log.Printf("Logical replication started database %s. Publication name = %s\n", rc.connCfg.Name, rc.publicationName)
 
 	changes := make(chan *db.Transaction)
 	rc.running = true

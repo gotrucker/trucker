@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"log"
 	"strings"
 	"text/template"
 	"time"
@@ -15,7 +14,10 @@ import (
 
 	"github.com/tonyfg/trucker/pkg/config"
 	"github.com/tonyfg/trucker/pkg/db"
+	"github.com/tonyfg/trucker/pkg/logging"
 )
+
+var log = logging.MakeSimpleLogger("clickhouse writer")
 
 type Writer struct {
 	currentLsnTable string
@@ -47,11 +49,10 @@ func (w *Writer) SetupPositionTracking() {
 	ctx := context.Background()
 	w.chDo(ctx, ch.Query{
 		Body: fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
-id Boolean DEFAULT true,
 lsn UInt64
 )
 ENGINE = ReplacingMergeTree(lsn)
-ORDER BY (id)`, w.currentLsnTable),
+ORDER BY (lsn)`, w.currentLsnTable),
 	})
 
 	w.chDo(ctx, ch.Query{
@@ -382,7 +383,7 @@ func appendValue(values map[string]proto.ColInput, col db.Column, row []any, i i
 
 func (w *Writer) chDo(ctx context.Context, query ch.Query) {
 	if err := w.conn.Do(ctx, query); err != nil {
-		log.Printf("[Clickhouse Writer] Error executing SQL:\n%s", query.Body)
+		log.Error(fmt.Sprintf("Error executing SQL:\n%s", query.Body))
 		panic(err)
 	}
 }

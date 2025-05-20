@@ -3,6 +3,8 @@ package db
 import (
 	"fmt"
 	"iter"
+	"log/slog"
+	"os"
 )
 
 const (
@@ -59,6 +61,8 @@ func OperationStr(operation uint8) string {
 	case Delete:
 		return "delete"
 	default:
-		panic(fmt.Sprintf("Unknown operation %d\n", operation))
+		slog.Error("db", "msg", fmt.Sprintf("Unknown operation %d", operation))
+		os.Exit(1)
+		return "" // Go compiler goes nuts if we don't return something
 	}
 }

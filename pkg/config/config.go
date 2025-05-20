@@ -27,6 +27,8 @@ type connectionYml struct {
 }
 
 type configYml struct {
+	LogStyle string `yaml:"log_style"`
+	LogLevel string `yaml:"log_type"`
 	Connections []connectionYml `yaml:"connections"`
 }
 
@@ -42,6 +44,8 @@ type Connection struct {
 }
 
 type Config struct {
+	LogStyle string
+	LogLevel string
 	Connections map[string]Connection
 }
 
@@ -54,6 +58,8 @@ func Load(path string) Config {
 	configYml := loadYml(path, configYml{}, envMap)
 
 	config := Config{
+		LogLevel: configYml.LogLevel,
+		LogStyle: configYml.LogStyle,
 		Connections: make(map[string]Connection),
 	}
 

@@ -1,28 +1,43 @@
 package main
 
 import (
-	"log"
+	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
+	"github.com/tonyfg/trucker/pkg/config"
+	"github.com/tonyfg/trucker/pkg/logging"
 	"github.com/tonyfg/trucker/pkg/mainroutines"
 )
 
 var version = "undefined"
+var log = logging.MakeSimpleLogger("main")
 
 func main() {
-	log.Printf("Trucker version %s. Firing up the engine!\n", version)
 	sigChan := trapSignals()
+
 	projectPath := projectPathFromArgsOrCwd()
-	doneChan, truckCfgs, trucksByInputConnection := mainroutines.Start(projectPath)
+	ymlPath := filepath.Join(projectPath, "trucker.yml")
+	cfg := config.Load(ymlPath)
+	logging.Init(cfg)
+	truckCfgs := config.LoadTrucks(projectPath, cfg)
+
+	log.Info(fmt.Sprintf(
+		"Trucker version %s. Configuration loaded... Firing up all %d trucks!\n",
+		version,
+		len(truckCfgs),
+	))
+
+	doneChan, truckCfgs, trucksByInputConnection := mainroutines.Start(cfg, truckCfgs)
 
 	if len(truckCfgs) > 0 {
 	outerLoop:
 		for {
 			select {
 			case <-sigChan:
-				log.Println("Received termination signal. Stopping all trucks...")
+				log.Info("Received termination signal. Stopping all trucks...")
 				for _, trucks := range trucksByInputConnection {
 					for _, truck := range trucks {
 						truck.Stop()
@@ -30,7 +45,11 @@ func main() {
 				}
 				break outerLoop
 			case exit := <-doneChan:
-				log.Printf("Truck '%s' stopped early: %s\nBailing out...\n", exit.TruckName, exit.Msg)
+				log.Info(fmt.Sprintf(
+					"Truck '%s' stopped early: %s\nStopping all trucks and exiting...\n",
+					exit.TruckName,
+					exit.Msg,
+				))
 				for _, trucks := range trucksByInputConnection {
 					for _, truck := range trucks {
 						truck.Stop()
@@ -41,7 +60,7 @@ func main() {
 		}
 	}
 
-	log.Println("All trucks stopped. Exiting!")
+	log.Info("All trucks stopped. Exiting!")
 }
 
 func trapSignals() chan os.Signal {
@@ -57,7 +76,8 @@ func projectPathFromArgsOrCwd() string {
 
 	dir, err := os.Getwd()
 	if err != nil {
-		log.Fatal(err)
+		log.Error(fmt.Sprintf("Can't get working directory: %s\nExiting...", err))
+		os.Exit(1)
 	}
 
 	return dir

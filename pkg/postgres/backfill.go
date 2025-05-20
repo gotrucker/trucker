@@ -4,7 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
+	"os"
 	"strings"
 	"text/template"
 
@@ -73,8 +74,8 @@ WHERE table_schema = $1
 
 	rows, err := tx.Query(context.Background(), sql.String())
 	if err != nil {
-		log.Printf("[Postgres Backfiller] Error running query:\n%s\n", sql.String())
-		panic(err)
+		slog.Error("postgres/backfill", "msg", fmt.Sprintf("Error running query:\n%s", sql.String()))
+		os.Exit(1)
 	}
 
 	fields := rows.FieldDescriptions()
