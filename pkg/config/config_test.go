@@ -7,6 +7,10 @@ import (
 func TestLoadConfig(t *testing.T) {
 	config := Load("../../test/fixtures/projects/postgres_to_clickhouse/trucker.yml")
 
+	if config.UniqueId != "2" {
+		t.Error("Expected unique id = 2, got", config.UniqueId)
+	}
+
 	if len(config.Connections) != 2 {
 		t.Error("Expected 2 connections, got", len(config.Connections))
 	}

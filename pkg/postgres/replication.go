@@ -29,9 +29,9 @@ type ReplicationClient struct {
 	columnsCache    map[string][]db.Column
 }
 
-func NewReplicationClient(tables []string, connCfg config.Connection) *ReplicationClient {
+func NewReplicationClient(tables []string, connCfg config.Connection, uniqueId string) *ReplicationClient {
 	return &ReplicationClient{
-		publicationName: fmt.Sprintf("trucker_%s", connCfg.Database),
+		publicationName: fmt.Sprintf("trucker_%s%s", connCfg.Database, uniqueId),
 		tables:          tables,
 		connCfg:         connCfg,
 		running:         false,

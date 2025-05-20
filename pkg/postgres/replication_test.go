@@ -260,7 +260,7 @@ got: %v`, expectedInsertCols, change.Columns)
 
 func replicationTestSetup(table string) (*pgx.Conn, *ReplicationClient) {
 	conn := helpers.PreparePostgresTestDb()
-	replicationClient := NewReplicationClient([]string{table}, helpers.PostgresCfg)
+	replicationClient := NewReplicationClient([]string{table}, helpers.PostgresCfg, "2")
 
 	return conn, replicationClient
 }

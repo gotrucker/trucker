@@ -16,7 +16,7 @@ func TestSetupPositionTracking(t *testing.T) {
 	w.SetupPositionTracking()
 	_, err := w.conn.Exec(
 		context.Background(),
-		"SELECT * FROM trucker_current_lsn__test")
+		"SELECT * FROM trucker_current_lsn__test2")
 	if err != nil {
 		t.Error(err)
 	}
@@ -25,7 +25,7 @@ func TestSetupPositionTracking(t *testing.T) {
 	w.SetupPositionTracking()
 	_, err = w.conn.Exec(
 		context.Background(),
-		"SELECT * FROM trucker_current_lsn__test")
+		"SELECT * FROM trucker_current_lsn__test2")
 	if err != nil {
 		t.Error(err)
 	}
@@ -33,7 +33,7 @@ func TestSetupPositionTracking(t *testing.T) {
 	// - We can write LSNs to the table
 	_, err = w.conn.Exec(
 		context.Background(),
-		"INSERT INTO trucker_current_lsn__test (lsn) VALUES (123)")
+		"INSERT INTO trucker_current_lsn__test2 (lsn) VALUES (123)")
 	if err != nil {
 		t.Error(err)
 	}
@@ -41,14 +41,14 @@ func TestSetupPositionTracking(t *testing.T) {
 	// - We can't add more than 1 row to the table
 	_, err = w.conn.Exec(
 		context.Background(),
-		"INSERT INTO trucker_current_lsn__test (lsn) VALUES (234)")
+		"INSERT INTO trucker_current_lsn__test2 (lsn) VALUES (234)")
 	if err == nil {
 		t.Error("Expected an error when adding more than 1 row to the LSN tracking table")
 	}
 
 	row := w.conn.QueryRow(
 		context.Background(),
-		"SELECT COUNT(*) FROM trucker_current_lsn__test")
+		"SELECT COUNT(*) FROM trucker_current_lsn__test2")
 	var count int64
 	row.Scan(&count)
 
@@ -75,7 +75,7 @@ func TestGetCurrentPosition(t *testing.T) {
 
 	_, err := w.conn.Exec(
 		context.Background(),
-		"INSERT INTO trucker_current_lsn__test (lsn) VALUES (123)")
+		"INSERT INTO trucker_current_lsn__test2 (lsn) VALUES (123)")
 	if err != nil {
 		t.Error(err)
 	}
@@ -145,5 +145,6 @@ func writerTestSetup() *Writer {
 		"test",
 		"INSERT INTO whiskies (name, age, whisky_type_id) SELECT name, age, whisky_type_id FROM {{.rows}}",
 		helpers.PostgresCfg,
+		"2",
 	)
 }

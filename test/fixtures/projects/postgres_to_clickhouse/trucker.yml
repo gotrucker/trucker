@@ -1,3 +1,4 @@
+unique_id: 2
 connections:
 - name: pg_input_conn
   adapter: postgres

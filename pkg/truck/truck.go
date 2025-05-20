@@ -30,14 +30,14 @@ type Truck struct {
 	DoneChan          chan ExitMsg
 }
 
-func NewTruck(cfg config.Truck, rc *postgres.ReplicationClient, connCfgs map[string]config.Connection, doneChan chan ExitMsg) Truck {
+func NewTruck(cfg config.Truck, rc *postgres.ReplicationClient, connCfgs map[string]config.Connection, doneChan chan ExitMsg, uniqueId string) Truck {
 	return Truck{
 		Name:              cfg.Name,
 		ReplicationClient: rc,
 		readQuery:         cfg.Input.Sql,
 		Reader:            NewReader(cfg.Input.Sql, connCfgs[cfg.Input.Connection]),
 		InputTables:       cfg.Input.Tables,
-		Writer:            NewWriter(cfg.Input.Connection, cfg.Output.Sql, connCfgs[cfg.Output.Connection]),
+		Writer:            NewWriter(cfg.Input.Connection, cfg.Output.Sql, connCfgs[cfg.Output.Connection], uniqueId),
 		ChangesChan:       make(chan *db.Changeset),
 		KillChan:          make(chan any),
 		DoneChan:          doneChan,
@@ -135,12 +135,12 @@ func NewReader(inputSql string, cfg config.Connection) db.Reader {
 	return nil
 }
 
-func NewWriter(inputConnectionName string, outputSql string, cfg config.Connection) db.Writer {
+func NewWriter(inputConnectionName string, outputSql string, cfg config.Connection, uniqueId string) db.Writer {
 	switch cfg.Adapter {
 	case "postgres":
-		return postgres.NewWriter(inputConnectionName, outputSql, cfg)
+		return postgres.NewWriter(inputConnectionName, outputSql, cfg, uniqueId)
 	case "clickhouse":
-		return clickhouse.NewWriter(inputConnectionName, outputSql, cfg)
+		return clickhouse.NewWriter(inputConnectionName, outputSql, cfg, uniqueId)
 	default:
 		log.Fatalf("Unsupported adapter: %s", cfg.Adapter)
 	}

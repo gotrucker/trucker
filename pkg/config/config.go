@@ -27,6 +27,7 @@ type connectionYml struct {
 }
 
 type configYml struct {
+	UniqueId    string          `yaml:"unique_id,omitempty"`
 	Connections []connectionYml `yaml:"connections"`
 }
 
@@ -42,6 +43,7 @@ type Connection struct {
 }
 
 type Config struct {
+	UniqueId string
 	Connections map[string]Connection
 }
 
@@ -54,6 +56,7 @@ func Load(path string) Config {
 	configYml := loadYml(path, configYml{}, envMap)
 
 	config := Config{
+		UniqueId:    configYml.UniqueId,
 		Connections: make(map[string]Connection),
 	}
 

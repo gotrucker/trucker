@@ -20,7 +20,7 @@ func TestSetupPositionTracking(t *testing.T) {
 	// It should create the LSN tracking table
 	w.SetupPositionTracking()
 	w.chDo(context.Background(), ch.Query{
-		Body:   "SELECT lsn FROM trucker_current_lsn__test LIMIT 1",
+		Body:   "SELECT lsn FROM trucker_current_lsn__test2 LIMIT 1",
 		Result: proto.AutoResult("lsn"),
 	}) // This will crash if the table doesn't exist
 
@@ -29,7 +29,7 @@ func TestSetupPositionTracking(t *testing.T) {
 
 	var theLsn proto.ColUInt64
 	if err := w.conn.Do(context.Background(), ch.Query{
-		Body:   "SELECT max(lsn) lsn FROM trucker_current_lsn__test",
+		Body:   "SELECT max(lsn) lsn FROM trucker_current_lsn__test2",
 		Result: proto.Results{{Name: "lsn", Data: &theLsn}},
 	}); err != nil {
 		t.Error("Failed to query the LSN tracking table", err)
@@ -127,9 +127,5 @@ func writerTestSetup() *Writer {
 		panic(err)
 	}
 
-	return NewWriter(
-		"test",
-		string(sqlTemplate),
-		helpers.ClickhouseCfg,
-	)
+	return NewWriter("test", string(sqlTemplate), helpers.ClickhouseCfg, "2")
 }

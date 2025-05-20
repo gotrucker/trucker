@@ -26,7 +26,7 @@ func TestBackfillReplicationReadAndWrite(t *testing.T) {
 	defer pgConn.Close(context.Background())
 	chConn := helpers.PrepareClickhouseTestDb()
 	defer chConn.Close()
-	rc := postgres.NewReplicationClient([]string{"public.whiskies"}, helpers.PostgresCfg)
+	rc := postgres.NewReplicationClient([]string{"public.whiskies"}, helpers.PostgresCfg, "2")
 
 	r := truck.NewReader(
 		readQuery,
@@ -44,6 +44,7 @@ SELECT id,
 FROM {{ .rows }}
 GROUP BY id`,
 		helpers.ClickhouseCfg,
+		"2",
 	)
 
 	_, snapshotLsn, snapshotName := rc.Setup()

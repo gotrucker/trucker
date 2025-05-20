@@ -34,10 +34,10 @@ func TestPostgresToClickhouse(t *testing.T) {
 	currentPosition := func() uint64 {
 		var lsn proto.ColUInt64
 		if err := chConn.Do(context.Background(), ch.Query{
-			Body:   "SELECT lsn lsn FROM trucker.trucker_current_lsn__pg_input_conn FINAL",
+			Body:   "SELECT lsn lsn FROM trucker.trucker_current_lsn__pg_input_conn2 FINAL",
 			Result: proto.Results{{Name: "lsn", Data: &lsn}},
 		}); err != nil {
-			t.Error("Failed to query trucker_current_lsn__test", err)
+			t.Error("Failed to query trucker_current_lsn__pg_input_conn2", err)
 		}
 		return lsn.Row(0)
 	}

@@ -33,13 +33,13 @@ func Start(projectPath string) (chan truck.ExitMsg, []config.Truck, map[string][
 		connName := truckCfg.Input.Connection
 		if _, ok := replicationClients[connName]; !ok {
 			replicatedTables := replicatedTablesPerConnection[connName]
-			replicationClients[connName] = postgres.NewReplicationClient(replicatedTables, cfg.Connections[connName])
+			replicationClients[connName] = postgres.NewReplicationClient(replicatedTables, cfg.Connections[connName], cfg.UniqueId)
 		}
 	}
 
 	trucksByInputConnection := make(map[string][]*truck.Truck)
 	for _, truckCfg := range truckCfgs {
-		truck := truck.NewTruck(truckCfg, replicationClients[truckCfg.Input.Connection], cfg.Connections, doneChan)
+		truck := truck.NewTruck(truckCfg, replicationClients[truckCfg.Input.Connection], cfg.Connections, doneChan, cfg.UniqueId)
 		trucksByInputConnection[truckCfg.Input.Connection] = append(trucksByInputConnection[truckCfg.Input.Connection], &truck)
 	}
 

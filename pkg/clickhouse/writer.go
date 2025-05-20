@@ -25,7 +25,7 @@ type Writer struct {
 	cfg             config.Connection
 }
 
-func NewWriter(inputConnectionName string, writeQuery string, cfg config.Connection) *Writer {
+func NewWriter(inputConnectionName string, writeQuery string, cfg config.Connection, uniqueId string) *Writer {
 	tmpl, err := template.New("outputSql").Parse(writeQuery)
 	if err != nil {
 		panic(err)
@@ -36,7 +36,7 @@ func NewWriter(inputConnectionName string, writeQuery string, cfg config.Connect
 	return &Writer{
 		// FIXME: LSN tracking should be done per-truck, since writing the same
 		// change on multiple trucks can be interruped midway through
-		currentLsnTable: fmt.Sprintf(`"%s"."trucker_current_lsn__%s"`, cfg.Database, inputConnectionName),
+		currentLsnTable: fmt.Sprintf(`"%s"."trucker_current_lsn__%s%s"`, cfg.Database, inputConnectionName, uniqueId),
 		queryTemplate:   tmpl,
 		conn:            conn,
 		cfg:             cfg,

@@ -21,7 +21,7 @@ type Writer struct {
 	conn            *pgxpool.Pool
 }
 
-func NewWriter(inputConnectionName string, writeQuery string, cfg config.Connection) *Writer {
+func NewWriter(inputConnectionName string, writeQuery string, cfg config.Connection, uniqueId string) *Writer {
 	tmpl, err := template.New("outputSql").Parse(writeQuery)
 	if err != nil {
 		panic(err)
@@ -30,7 +30,7 @@ func NewWriter(inputConnectionName string, writeQuery string, cfg config.Connect
 	conn := NewConnection(cfg.User, cfg.Pass, cfg.Host, cfg.Port, cfg.Ssl, cfg.Database, false)
 
 	return &Writer{
-		currentLsnTable: fmt.Sprintf("trucker_current_lsn__%s", inputConnectionName),
+		currentLsnTable: fmt.Sprintf("trucker_current_lsn__%s%s", inputConnectionName, uniqueId),
 		queryTemplate:   tmpl,
 		conn:            conn,
 	}
