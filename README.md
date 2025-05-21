@@ -115,6 +115,10 @@ https://pkg.go.dev/go.uber.org/zap
 - Check this out for more ideas: https://github.com/DataExpert-io/data-engineer-handbook
 
 
+# Release process
+git tag v0.x -am "Version 0.x"
+make build_images push_images
+
 
 # Questions
 
