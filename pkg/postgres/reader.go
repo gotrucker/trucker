@@ -70,7 +70,6 @@ func (r *Reader) Read(changeset *db.Changeset) *db.ChanChangeset {
 		log.Printf("[Postgres Reader] Reading changeset with more than 32k parameters. Using temporary table for %d rows\n", len(changeset.Rows))
 		tmplVars["rows"] = "r"
 		r.prepareTempTable(conn, changeset, columnsLiteral, changeset.Rows)
-		defer conn.Exec(context.Background(), "DROP TABLE r")
 	}
 
 	sql := new(bytes.Buffer)
@@ -100,6 +99,7 @@ func (r *Reader) Read(changeset *db.Changeset) *db.ChanChangeset {
 	// TODO This go routine is basically the same between reader and backfill. Refactor to avoid dups
 	go func() {
 		defer conn.Release()
+		defer conn.Exec(context.Background(), "DROP TABLE IF EXISTS r")
 		defer rows.Close()
 		defer close(rowChan)
 
