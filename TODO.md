@@ -1,3 +1,8 @@
+- Test postgres passwords with the following characters:
+  - %
+  - &
+  - ?
+
 # Possibility to force SSL on db connections
 
 # Better logging
