@@ -43,7 +43,7 @@ type Connection struct {
 }
 
 type Config struct {
-	UniqueId string
+	UniqueId    string
 	Connections map[string]Connection
 }
 

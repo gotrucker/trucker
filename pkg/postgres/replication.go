@@ -187,7 +187,7 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 
 				changes <- &db.Transaction{
 					StreamPosition: uint64(xld.WALStart),
-					Changesets: makeChangesets(xld.WALData, rc.columnsCache),
+					Changesets:     makeChangesets(xld.WALData, rc.columnsCache),
 				}
 
 				if xld.WALStart > clientXLogPos {

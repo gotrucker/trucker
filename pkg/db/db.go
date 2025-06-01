@@ -17,11 +17,11 @@ type Column struct {
 }
 
 type Changeset struct {
-	Table           string
-	Operation       uint8 // Insert, Update, or Delete
-	Columns         []Column
-	Rows            [][]any
-	StreamPosition  uint64
+	Table          string
+	Operation      uint8 // Insert, Update, or Delete
+	Columns        []Column
+	Rows           [][]any
+	StreamPosition uint64
 }
 
 type ChanChangeset struct {
@@ -32,8 +32,8 @@ type ChanChangeset struct {
 }
 
 type Transaction struct {
-	StreamPosition   uint64
-	Changesets iter.Seq[*Changeset]
+	StreamPosition uint64
+	Changesets     iter.Seq[*Changeset]
 }
 
 type Reader interface {

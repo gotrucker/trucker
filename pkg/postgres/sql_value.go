@@ -82,7 +82,13 @@ func makeChangesets(wal2jsonChanges []byte, columnsCache map[string][]db.Column)
 			for i, col := range tableCols {
 				valueIdx := slices.Index(change.ColumnNames, col.Name)
 				if valueIdx > -1 {
-					row[i] = change.ColumnValues[i]
+					if valueIdx < len(change.ColumnValues) {
+						row[i] = change.ColumnValues[i]
+					} else {
+						log.Printf("Column %s not found in change data for table %s, skipping...\n", col.Name, table)
+						log.Printf("Column names: %v\n", change.ColumnNames)
+						log.Printf("Column values: %v\n", change.ColumnValues)
+					}
 				}
 
 				oldValueIdx := slices.Index(change.OldKeys.KeyNames, col.Name)
