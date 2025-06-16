@@ -1,153 +1,182 @@
 # Trucker
 
-Trucker is a SQL-based streaming ETL tool that reads a database replication
-stream, allows enriching replicated changes by querying and JOINing other data
-from that database, then writes the result out to another database (or another
-table in the same database).
-The way reads and writes are done is fully controlled by the user, through
-writing the SQL queries that do the reading and writing.
+[![License](https://img.shields.io/github/license/tonyfg/trucker)](LICENSE)
 
-Trucker has very low latency, so new data is written out in near real-time. This
-makes it suitable for scenarios like real-time analytics, maintaining search
-indexes, or calculating and storing aggregated data for display in interactive
-applications. It can be a good replacement for database triggers, incremental
-materialized views, data pipelines that involve complex infrastructure, etc.
+Trucker is a SQL-based streaming ETL tool that reads from a database replication stream, enriches replicated changes by querying and JOINing other data from the source database, then writes the result to another database (or another table in the same database).
 
-# Supported databases
+Having very low latency, Trucker is ideal for implementing:
+- Real-time analytics
+- Calculating and storing aggregated data for interactive applications and dashboards
+- Replacing database triggers with something that runs after a transaction has been committed
+- Incremental materialized views
+- Simplifying complex data pipelines
+
+## Features
+
+- **SQL-based**: Define reads/transformations/writes using familiar SQL syntax
+- **Low latency**: Data changes are read, processed and written in near real-time
+- **Flexible transformations**: Enrich data by joining with other tables
+- **Configuration as code**: Simple and templateable YAML files for configuration. Makes it easy to use configurations and secrets from orchestrators like Kubernetes.
+- **Transactional processing**: Process database transactions atomically (on databases that support it)
+
+## Supported Databases
 
 | Database   | Reading | Writing |
 | ---------- | ------- | ------- |
 | PostgreSQL | Yes     | Yes     |
 | Clickhouse | No      | Yes     |
 
-# Installing (TODO)
-- Download binaries from releases page
-- Docker
-- Build from source
+## Installation
 
+### Docker
 
+```bash
+docker pull tonyfg/trucker:latest
+```
 
-# How to define a data pipeline
-- Each pipeline has it's own folder with some files inside
-- config file with source db/table config + destination db config
+### Binary Releases
 
-- trucker.json: contains data source definitions. templatable
-|- folder1
-|- folder2
-|- folderN: each folder contains a data pipeline definition
-   |- config.json: defines trigger (input) connection/table and output connection/table
-   |- transform.sql: Optional. Runs for every operation. 
-   |                 Allows transforming the input into a suitable format for output, can query from other tables in DB.
-   |                 Templatable, "operation", "new" and "old" variables are available.
-   |                 SELECT column names must match column names in output table
-   |- insert.sql: optional, like transform.sql but only runs on insert                 
-   |- update.sql: optional, like transform.sql but only runs on updates                 
-   |- delete.sql: optional, like transform.sql but only runs on deletes                 
+Download pre-built binaries from the [releases page](https://github.com/tonyfg/trucker/releases).
 
-insert.sql/update.sql/delete.sql run after transform.sql if it exists. they have access to a "transformed" variable in those cases.
+### Build from Source
 
+```bash
+git clone https://github.com/tonyfg/trucker.git
+cd trucker
+go build
+```
 
-# trucker.yml example
-- trucker.yml is templatable to make it possible to inject variables/secrets.
-  connections:
+## Quick Start
+
+1. Create a directory for your trucker project
+2. Define your database connections in `trucker.yml` (TODO: link to example)
+3. Create a folder for each data pipeline
+4. Add a truck.yml file to define where to read data from and where to write to
+5. Define your input and output operations with SQL (input.sql and output.sql files)
+6. Run Trucker pointing to your project directory
+
+```bash
+trucker /path/to/your/project
+```
+
+## Configuration
+
+### Project Structure
+
+```
+my-project/
+├── trucker.yml             # Database connection definitions
+├── pipeline1/          # Each folder defines a data pipeline
+│   ├── truck.yml       # Input/output configuration
+│   ├── input.sql       # SQL for reading/enriching data
+│   └── output.sql      # SQL for writing data to destination database
+└── pipeline2/
+    └── ...
+```
+
+### Connection Configuration (trucker.yml)
+
+```yaml
+connections:
   - name: webapp_db
     adapter: postgres
-    host: awesome-db-master.example.org
-    port: 5432 # optional, default 5432
-    database: a_cool_db
-    user: a_db_user
-    pass: the_db_password
-    replica_host: awesome-db-master.example.org # optional, if set master will only be used to create replication slots and publications. streaming changes and queries will run on replica
-    replica_port: 5432 # optional, default 5432
-    replica_db: a_cool_db_replica # optional, defaults to same as the master db
-    replica_user: a_db_user_replica # optional, defaults to same as the master db
-    replica_pass: the_replica_password # optional, defaults to same as the master db
-      
-  - name: warehouse
-    adapter: postgres
-    host_path: /run/secrets/warehouse_host
-    port_path: /run/secrets/warehouse_port
-    database_path: /run/secrets/warehouse_database
-    user_path: ...
-    pass_path: ...
-
-  - name: realtime_analytics
+    host: pg.example.org
+    port: 5432
+    database: my_app_db
+    user: db_user
+    pass: db_password
+    
+  - name: analytics_db
     adapter: clickhouse
-    host: {{ env("CLICKHOUSE_HOST") }}
-    port: ...
+    host: clickhouse.example.org
+    database: my_analytics
+    user: db_user
+    pass: db_password
+```
 
+### Pipeline Configuration (truck.yml)
 
-# Steps
-- create if not exists replication slot
-- create/update publication. does this need to be done before or after the replication slot is setup?
-- backfill, and also select the current WAL position
-  - transactionally correct backfill: https://stackoverflow.com/questions/69459481/retrieve-lsn-of-postgres-database-during-transaction
-  - if connected to master server: pg_current_wal_lsn()
-  - if connected to replica server: pg_last_wal_receive_lsn()
-- set replication slot to point to the WAL position we got from above
+```yaml
+input:
+  connection: webapp_db
+  table: public.users
 
-# Logging
-https://pkg.go.dev/go.uber.org/zap
+output:
+  connection: analytics_db
+```
 
-# OpenTelemetry / Prometheus metrics
-?
+## SQL Examples
 
-# Wishes for the future
-- Transactional consistency (each run of input/output should process a transaction in one go)
-- add possibility of multiple input tables on a truck (nice when you would repeat the same input/output.sql over and over again)
-- add only_columns and except_columns to truck.yml input section for performance improvement
-- When people use old__*, check if postgres tables are set to REPLICA IDENTITY FULL (or equivalent for other DBs). Show a decent error msg and exit if it's not
-- Use iterators instead of creating arrays from scratch for everything
-- Revamp streamer/backfill/reader interface to actually hide the reader call. no need for a common interface there since the Read() method doesn't need to be called by the truck at all... We could just have the Backfill(), Start(), and Stop() methods, with Read() being internally implemented. This could allow some advantages in using DB-specific functionality.
-- Integrate DuckDB as a library to allow having lots more input / output sources
-- Large tests with TPC-DS dataset and some gnarly scenarios
+### Input SQL (input.sql)
 
-# Similar projects
-- pgstream: https://github.com/xataio/pgstream
-- pgdeltastream: https://github.com/hasura/pgdeltastream
-- PeerDB: https://www.peerdb.io/
-- pg_flo: https://www.pgflo.io/
-- BemiDB: https://github.com/BemiHQ/BemiDB
-- Materialize
-- Feldera
-- Striim
-- https://github.com/electric-sql/electric
-- Check this out for more ideas: https://github.com/DataExpert-io/data-engineer-handbook
+```sql
+SELECT
+  r.id,
+  r.name,
+  r.email,
+  u.last_login_at,
+  COUNT(o.id) AS order_count
+FROM {{ .rows }}
+LEFT JOIN user_stats u ON r.id = u.user_id
+LEFT JOIN orders o ON r.id = o.user_id
+GROUP BY r.id, r.name, r.email, u.last_login_at
+```
 
+### Output SQL (output.sql)
 
-# Release process
-git tag v0.x -am "Version 0.x"
-make build_images push_images
+```sql
+INSERT INTO analytics.user_metrics (
+  id, 
+  name, 
+  email, 
+  last_login_at, 
+  order_count
+)
+SELECT id, name, email, last_login_at, order_count
+FROM {{ .rows }}
+```
 
+## Observability
 
-# Questions
+Not implemented yet. Trucker will provide observability capabilities through:
+- Prometheus compatible metrics for monitoring trucker and pipelines
+- Structured logging via [zap](https://pkg.go.dev/go.uber.org/zap)
 
+## Documentation
 
-# Scratchpad
-## Backfill
-- Group trucks by input connection
-- For every truck in each group
-  - Check if destination table filled in / destination LSN tracking is up
-    - Read destination LSN into a struct so we can update replication slot to the oldest LSN among all trucks
-  - If there's no LSN, then we need a backfill regardless of whether we're replicating from a table that was already a part of the publication or not
-  - Collect whether we need to:
-    - add input table to publication
-    - create a temporary replication slot + snapshot for backfill
-  - group trucks inside group into trucks that can continue streaming vs trucks that need backfill
-    - This can be 2 slices of truck structs
-    - Start goroutine that reads from replication stream and publishes to truck input channels (will send to trucks in the streaming truck slice)
-      - Can't move replication slot to an LSN that's after the backfill snapshot LSN. Can still update destination LSNs on the destination databases.
-    - Start goroutine to backfill each truck that needs backfilling. Once backfill is done for everyone, open a second replication stream and stream from the LSN onwards until we catch up with the other trucks.
-      - FUCK! how do we know when we've caught up?
-      - We need to find a way to measure the distance, and when we're close we can just reboot all the trucks so we use a single replication stream.
-      - trucks that are a bit ahead can ignore events with a lower LSN than their destination LSN until everyone's in sync.
-## WAL2JSON messages
-### Insert
-Without identity replica = full: {"change":[{"kind":"insert","schema":"public","table":"countries","columnnames":["id","name"],"columntypes":["integer","text"],"columnvalues":[7,"a"]},{"kind":"insert","schema":"public","table":"countries","columnnames":["id","name"],"columntypes":["integer","text"],"columnvalues":[8,"b"]},{"kind":"insert","schema":"public","table":"countries","columnnames":["id","name"],"columntypes":["integer","text"],"columnvalues":[9,"c"]}]}
-With identity replica = full:    {"change":[{"kind":"insert","schema":"public","table":"whiskies","columnnames":["id","name","age","whisky_type_id"],"columntypes":["integer","text","integer","integer"],"columnvalues":[3,"a",12,1]},{"kind":"insert","schema":"public","table":"whiskies","columnnames":["id","name","age","whisky_type_id"],"columntypes":["integer","text","integer","integer"],"columnvalues":[4,"b",15,2]},{"kind":"insert","schema":"public","table":"whiskies","columnnames":["id","name","age","whisky_type_id"],"columntypes":["integer","text","integer","integer"],"columnvalues":[5,"c",18,3]}]}
-### Update
-Without identity replica = full: {"change":[{"kind":"update","schema":"public","table":"countries","columnnames":["id","name"],"columntypes":["integer","text"],"columnvalues":[6,"boda"],"oldkeys":{"keynames":["id"],"keytypes":["integer"],"keyvalues":[6]}}]}
-With identity replica = full:    {"change":[{"kind":"update","schema":"public","table":"whiskies","columnnames":["id","name","age","whisky_type_id"],"columntypes":["integer","text","integer","integer"],"columnvalues":[1,"boda1",15,4],"oldkeys":{"keynames":["id","name","age","whisky_type_id"],"keytypes":["integer","text","integer","integer"],"keyvalues":[1,"Glenfiddich",15,4]}},{"kind":"update","schema":"public","table":"whiskies","columnnames":["id","name","age","whisky_type_id"],"columntypes":["integer","text","integer","integer"],"columnvalues":[3,"boda3",12,1],"oldkeys":{"keynames":["id","name","age","whisky_type_id"],"keytypes":["integer","text","integer","integer"],"keyvalues":[3,"a",12,1]}},{"kind":"update","schema":"public","table":"whiskies","columnnames":["id","name","age","whisky_type_id"],"columntypes":["integer","text","integer","integer"],"columnvalues":[4,"boda4",15,2],"oldkeys":{"keynames":["id","name","age","whisky_type_id"],"keytypes":["integer","text","integer","integer"],"keyvalues":[4,"b",15,2]}},{"kind":"update","schema":"public","table":"whiskies","columnnames":["id","name","age","whisky_type_id"],"columntypes":["integer","text","integer","integer"],"columnvalues":[5,"boda5",18,3],"oldkeys":{"keynames":["id","name","age","whisky_type_id"],"keytypes":["integer","text","integer","integer"],"keyvalues":[5,"c",18,3]}}]}
-### Delete
-Without identity replica = full: {"change":[{"kind":"delete","schema":"public","table":"whisky_types","oldkeys":{"keynames":["id"],"keytypes":["integer"],"keyvalues":[1]}},{"kind":"delete","schema":"public","table":"whisky_types","oldkeys":{"keynames":["id"],"keytypes":["integer"],"keyvalues":[2]}},{"kind":"delete","schema":"public","table":"whisky_types","oldkeys":{"keynames":["id"],"keytypes":["integer"],"keyvalues":[3]}},{"kind":"delete","schema":"public","table":"whisky_types","oldkeys":{"keynames":["id"],"keytypes":["integer"],"keyvalues":[4]}},{"kind":"delete","schema":"public","table":"whisky_types","oldkeys":{"keynames":["id"],"keytypes":["integer"],"keyvalues":[5]}}]}
-With identity replica = full:    {"change":[{"kind":"delete","schema":"public","table":"whiskies","oldkeys":{"keynames":["id","name","age","whisky_type_id"],"keytypes":["integer","text","integer","integer"],"keyvalues":[1,"boda1",15,4]}},{"kind":"delete","schema":"public","table":"whiskies","oldkeys":{"keynames":["id","name","age","whisky_type_id"],"keytypes":["integer","text","integer","integer"],"keyvalues":[3,"boda3",12,1]}},{"kind":"delete","schema":"public","table":"whiskies","oldkeys":{"keynames":["id","name","age","whisky_type_id"],"keytypes":["integer","text","integer","integer"],"keyvalues":[4,"boda4",15,2]}},{"kind":"delete","schema":"public","table":"whiskies","oldkeys":{"keynames":["id","name","age","whisky_type_id"],"keytypes":["integer","text","integer","integer"],"keyvalues":[5,"boda5",18,3]}}]}
+TODO
+For detailed documentation, visit [Trucker Documentation](https://github.com/tonyfg/trucker/wiki).
+
+## Projects you may find useful
+
+- [pgstream](https://github.com/xataio/pgstream)
+- [pgdeltastream](https://github.com/hasura/pgdeltastream)
+- [PeerDB](https://www.peerdb.io/)
+- [pg_flo](https://www.pgflo.io/)
+- [BemiDB](https://github.com/BemiHQ/BemiDB)
+- [Materialize](https://materialize.com/)
+- [Feldera](https://feldera.com/)
+- [Striim](https://www.striim.com/)
+- [ElectricSQL](https://github.com/electric-sql/electric)
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## Roadmap
+- Base documentation and examples
+- Database migrations system
+- Structured logging
+- Prometheus compatible metrics exporter
+- trucker.yml/truck.yml options to deal with special backfill situations (whether to truncate destination tables, etc)
+- MySQL/MariaDB support
+- Snowflake support
+- AWS Redshift support
+- Test harness for testing data pipelines in isolation
+- Motherduck support
+- (maybe) Google bigquery support
+- Transactional consistency enhancements
+- Column filtering for performance optimization
+- Integrate DuckDB as a library for expanded read/write support
+- Support for other sources/destinations of data (webhooks, S3, etc)
+- Comprehensive e2e testing with TPC-DS datasets
