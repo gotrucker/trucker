@@ -179,7 +179,7 @@ func makeValuesListFromRowChan(columns []db.Column, rowChan chan [][]any, leftov
 	for rowBatch := range rowChan {
 		rows = append(rows, rowBatch...)
 
-		if len(rows) > maxRows {
+		if len(rows) >= maxRows {
 			sql, params := makeValuesList(columns, rows[:maxRows], withTypes)
 			return sql, params, rows[maxRows:]
 		}
