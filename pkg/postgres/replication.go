@@ -94,12 +94,21 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 
 	conn := rc.streamConn.PgConn()
 
+	configuredTables := ""
+	for i, table := range rc.tables {
+		if i > 0 {
+			configuredTables += ","
+		}
+		configuredTables += escapeWal2JsonTableName(table)
+	}
+
+	pluginArguments := []string{fmt.Sprintf("\"add-tables\" '%s'", configuredTables)}
 	err := pglogrepl.StartReplication(
 		context.Background(),
 		conn,
 		rc.publicationName,
 		startLSN,
-		pglogrepl.StartReplicationOptions{},
+		pglogrepl.StartReplicationOptions{PluginArgs: pluginArguments},
 	)
 	if err != nil {
 		log.Fatalln("StartReplication failed:", err)
@@ -161,7 +170,9 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 
 			msg, ok := rawMsg.(*pgproto3.CopyData)
 			if !ok {
-				log.Printf("Received unexpected message: %T\n", rawMsg)
+				// log.Printf("Received unexpected message: %T\n", rawMsg)
+				// This is fine... Usually happens when a trigger or other plsql code sends a NOTICE.
+				// Let's not print anything to avoid log spam.
 				continue
 			}
 
@@ -445,4 +456,10 @@ func (rc *ReplicationClient) query1(sql string, values ...any) pgx.Row {
 
 func (rc *ReplicationClient) exec(sql string, values ...any) {
 	rc.query(sql, values...).Close()
+}
+
+// space, single quote, comma, period, asterisk need to be escaped with \
+// https://github.com/eulerto/wal2json/blob/master/README.md#parameters
+func escapeWal2JsonTableName(table string) string {
+	return strings.NewReplacer(" ", `\ `, "'", `\'`, ",", `\,`, "*", `\*`).Replace(table)
 }

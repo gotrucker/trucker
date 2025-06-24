@@ -3,4 +3,3 @@ input:
   table: public.whiskies
 output:
   connection: pg_input_conn
-  table: public.whiskies_flat
