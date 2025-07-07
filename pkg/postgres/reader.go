@@ -67,7 +67,12 @@ func (r *Reader) Read(changeset *db.Changeset) *db.ChanChangeset {
 		// Load in batches to a temporary table instead of using a VALUES list
 		// since we're over the maximum number of parameters supported by PG for
 		// a SQL query.
-		log.Printf("[Postgres Reader] Reading changeset with more than 32k parameters. Using temporary table for %d rows\n", len(changeset.Rows))
+		log.Printf(
+			"[Postgres Reader] Reading changeset with more than 32k parameters for %s on table %s. Using temporary table for %d rows\n",
+			db.OperationStr(changeset.Operation),
+			changeset.Table,
+			len(changeset.Rows),
+		)
 		tmplVars["rows"] = "r"
 		r.prepareTempTable(conn, changeset, columnsLiteral, changeset.Rows)
 	}
