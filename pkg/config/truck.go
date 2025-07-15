@@ -9,14 +9,15 @@ import (
 
 type Truck struct {
 	Name  string
+	SlowQueryThresholdMs int64 `yaml:"slow_query_threshold_ms"`
 	Input struct {
-		Connection string   `yaml:"connection,omitempty"`
-		Table      string   `yaml:"table,omitempty"`
-		Tables     []string `yaml:"tables,omitempty"`
+		Connection string   `yaml:"connection"`
+		Table      string   `yaml:"table"`
+		Tables     []string `yaml:"tables"`
 		Sql        string
 	} `yaml:"input"`
 	Output struct {
-		Connection string `yaml:"connection,omitempty"`
+		Connection string `yaml:"connection"`
 		Sql        string
 	} `yaml:"output"`
 }
@@ -73,6 +74,11 @@ func loadTruck(path string, cfg Config) Truck {
 
 	for _, table := range truck.Input.Tables {
 		log.Printf("- %s:%s -> %s\n", truck.Input.Connection, table, truck.Output.Connection)
+	}
+
+	if truck.SlowQueryThresholdMs == 0 {
+		truck.SlowQueryThresholdMs = cfg.SlowQueryThresholdMs
+		log.Printf("[Truck %s] Using %dms as a threshold to log slow queries from main config...\n", truck.Name, truck.SlowQueryThresholdMs)
 	}
 
 	return truck

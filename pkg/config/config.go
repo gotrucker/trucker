@@ -9,25 +9,28 @@ import (
 	"path/filepath"
 )
 
+const DefaultSlowQueryThresholdMs = 1000 // Default slow query threshold in milliseconds
+
 type connectionYml struct {
-	Name         string `yaml:"name,omitempty"`
-	Adapter      string `yaml:"adapter,omitempty"`
-	Host         string `yaml:"host,omitempty"`
-	Port         uint16 `yaml:"port,omitempty"`
-	Ssl          string `yaml:"ssl,omitempty"`
-	Database     string `yaml:"database,omitempty"`
-	User         string `yaml:"user,omitempty"`
-	Pass         string `yaml:"pass,omitempty"`
-	HostPath     string `yaml:"host_path,omitempty"`
-	PortPath     string `yaml:"port_path,omitempty"`
-	SslPath      string `yaml:"ssl_path,omitempty"`
-	DatabasePath string `yaml:"database_path,omitempty"`
-	UserPath     string `yaml:"user_path,omitempty"`
-	PassPath     string `yaml:"pass_path,omitempty"`
+	Name         string `yaml:"name"`
+	Adapter      string `yaml:"adapter"`
+	Host         string `yaml:"host"`
+	Port         uint16 `yaml:"port"`
+	Ssl          string `yaml:"ssl"`
+	Database     string `yaml:"database"`
+	User         string `yaml:"user"`
+	Pass         string `yaml:"pass"`
+	HostPath     string `yaml:"host_path"`
+	PortPath     string `yaml:"port_path"`
+	SslPath      string `yaml:"ssl_path"`
+	DatabasePath string `yaml:"database_path"`
+	UserPath     string `yaml:"user_path"`
+	PassPath     string `yaml:"pass_path"`
 }
 
 type configYml struct {
-	UniqueId    string          `yaml:"unique_id,omitempty"`
+	UniqueId    string          `yaml:"unique_id"`
+	SlowQueryThresholdMs int64 `yaml:"slow_query_threshold_ms"`
 	Connections []connectionYml `yaml:"connections"`
 }
 
@@ -44,6 +47,7 @@ type Connection struct {
 
 type Config struct {
 	UniqueId    string
+	SlowQueryThresholdMs int64
 	Connections map[string]Connection
 }
 
@@ -57,7 +61,13 @@ func Load(path string) Config {
 
 	config := Config{
 		UniqueId:    configYml.UniqueId,
+		SlowQueryThresholdMs: configYml.SlowQueryThresholdMs,
 		Connections: make(map[string]Connection),
+	}
+
+	if config.SlowQueryThresholdMs == 0 {
+		config.SlowQueryThresholdMs = DefaultSlowQueryThresholdMs
+		log.Printf("Using default value of %dms as a threshold to log slow queries...", config.SlowQueryThresholdMs)
 	}
 
 	// TODO: validations

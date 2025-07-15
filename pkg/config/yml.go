@@ -8,7 +8,7 @@ import (
 
 	"text/template"
 
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 func loadYml[Config any](path string, config Config, variables map[string]string) Config {

@@ -35,6 +35,10 @@ func TestLoadTrucks(t *testing.T) {
 		t.Error("Expected output connection = chconn, got", truck.Output.Connection)
 	}
 
+	if truck.SlowQueryThresholdMs != 2000 {
+		t.Error("Expected slow query threshold = 2000, got", truck.SlowQueryThresholdMs)
+	}
+
 	inputSql, err := os.ReadFile("../../test/fixtures/projects/postgres_to_clickhouse/truck/input.sql")
 	if err != nil {
 		t.Error(err)

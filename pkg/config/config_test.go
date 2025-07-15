@@ -11,6 +11,10 @@ func TestLoadConfig(t *testing.T) {
 		t.Error("Expected unique id = 2, got", config.UniqueId)
 	}
 
+	if config.SlowQueryThresholdMs != 1500 {
+		t.Error("Expected slow query threshold = 1500, got", config.SlowQueryThresholdMs)
+	}
+
 	if len(config.Connections) != 2 {
 		t.Error("Expected 2 connections, got", len(config.Connections))
 	}

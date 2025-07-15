@@ -23,8 +23,8 @@ type Truck struct {
 	Reader            db.Reader
 	InputTables       []string
 	Writer            db.Writer
-	OutputTable       string
 	OutputSql         string
+	SlowQueryThresholdMs int64
 	ChangesChan       chan *db.Changeset
 	KillChan          chan any
 	DoneChan          chan ExitMsg
@@ -38,6 +38,7 @@ func NewTruck(cfg config.Truck, rc *postgres.ReplicationClient, connCfgs map[str
 		Reader:            NewReader(cfg.Input.Sql, connCfgs[cfg.Input.Connection]),
 		InputTables:       cfg.Input.Tables,
 		Writer:            NewWriter(cfg.Input.Connection, cfg.Output.Sql, connCfgs[cfg.Output.Connection], uniqueId),
+		SlowQueryThresholdMs: cfg.SlowQueryThresholdMs,
 		ChangesChan:       make(chan *db.Changeset),
 		KillChan:          make(chan any),
 		DoneChan:          doneChan,
@@ -89,12 +90,22 @@ func (t *Truck) Start() {
 					return
 				}
 
+				now := time.Now()
 				resultChangeset := t.Reader.Read(changeset)
+				if time.Since(now).Milliseconds() > t.SlowQueryThresholdMs {
+					log.Printf("[Truck %s] Slow input query: took %dms for %d columns x %d rows.\n", t.Name, time.Since(now).Milliseconds(), len(changeset.Columns), len(changeset.Rows))
+				}
+
 				if resultChangeset == nil {
 					continue
 				}
 
+				now = time.Now()
 				t.Writer.Write(resultChangeset)
+				if time.Since(now).Milliseconds() > t.SlowQueryThresholdMs {
+					log.Printf("[Truck %s] Slow output query: took %dms for %d columns x %d rows.\n", t.Name, time.Since(now).Milliseconds(), len(resultChangeset.Columns), len(resultChangeset.Rows))
+				}
+
 				if changeset.StreamPosition != 0 {
 					t.Writer.SetCurrentPosition(changeset.StreamPosition)
 				}

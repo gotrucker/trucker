@@ -1,4 +1,5 @@
 unique_id: 2
+slow_query_threshold_ms: 1500
 connections:
 - name: pg_input_conn
   adapter: postgres
