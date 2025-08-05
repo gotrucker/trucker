@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/url"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -17,21 +18,24 @@ func NewConnection(user string, pass string, host string, port uint16, ssl strin
 		port = 5432
 	}
 
+	params := make([]string, 0, 0)
+	if replication {
+		params = append(params, "replication=database")
+	}
+
+	if ssl != "" {
+		params = append(params, fmt.Sprintf("sslmode=%s", ssl))
+	}
+
 	connString := fmt.Sprintf(
-		"user='%s' password='%s' host='%s' port='%d' dbname='%s'",
+		"postgres://%s:%s@%s:%d/%s?%s",
 		url.QueryEscape(user),
 		url.QueryEscape(pass),
 		url.QueryEscape(host),
 		port,
-		url.QueryEscape(database))
-
-	if replication {
-		connString += " replication='database'"
-	}
-
-	if ssl != "" {
-		connString += fmt.Sprintf(" sslmode='%s'", ssl)
-	}
+		url.QueryEscape(database),
+		strings.Join(params, "&"),
+	)
 
 	config, err := pgxpool.ParseConfig(connString)
 	if err != nil {
