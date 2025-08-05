@@ -2,6 +2,9 @@
 
 ## Existing TODOs
 
+- Test connection to RDS with rds.force_ssl=1
+- Test input from partitioned table
+
 - Test postgres passwords with the following characters:
   - %
   - &
