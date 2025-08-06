@@ -42,7 +42,7 @@ func TestMakeChangesets(t *testing.T) {
 		{Name: "old__whisky_type_id", Type: db.Int32},
 	}
 
-	changesets := make([]*db.Changeset, 0, 8)
+	changesets := make([]*db.Change, 0, 8)
 	for changeset := range makeChangesets([]byte(wal2json), columnsCache) {
 		changesets = append(changesets, changeset)
 	}

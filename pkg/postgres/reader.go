@@ -32,7 +32,7 @@ func NewReader(readQuery string, cfg config.Connection) *Reader {
 	return &Reader{queryTemplate: tmpl, conn: conn}
 }
 
-func (r *Reader) Read(changeset *db.Changeset) *db.ChanChangeset {
+func (r *Reader) Read(changeset *db.Change) *db.Change {
 	if len(changeset.Columns) == 0 || len(changeset.Rows) == 0 {
 		return nil
 	}
@@ -129,7 +129,7 @@ func (r *Reader) Read(changeset *db.Changeset) *db.ChanChangeset {
 		}
 	}()
 
-	return &db.ChanChangeset{
+	return &db.Change{
 		Operation: changeset.Operation,
 		Table:     changeset.Table,
 		Columns:   cols,
@@ -141,7 +141,7 @@ func (r *Reader) Close() {
 	r.conn.Close()
 }
 
-func (r *Reader) prepareTempTable(conn *pgxpool.Conn, changeset *db.Changeset, columnsLiteral string, rows [][]any) {
+func (r *Reader) prepareTempTable(conn *pgxpool.Conn, changeset *db.Change, columnsLiteral string, rows [][]any) {
 	// Create a temporary table to store the rows
 	sb := strings.Builder{}
 	sb.WriteString("CREATE TEMPORARY TABLE r (")

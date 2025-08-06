@@ -1,0 +1,48 @@
+pglogrepl.BeginMessage
+pglogrepl.RelationMessageV2 <- tem o nome da tabela
+pglogrepl.InsertMessageV2 * N <- ou Update/Delete, será que estas tb têm o nome da tabela?
+pglogrepl.CommitMessage
+- se a próxima transacção tiver changes na mesma tabela, n manda RelationMessage...
+- será que pode haver várias RelationMessage a meio de uma transaction qdo mexemos em várias tabelas? faz sentido que sim...
+- era de tratar isto como um stream que tem um único bloco...
+  - BeginMessage = StreamStartMessageV2
+  - CommitMessage = StreamStopMessageV2 + StreamCommitMessageV2
+
+
+
+
+2025/07/16 18:08:30 Goroutine started to read from replication stream
+2025/07/16 18:08:31 Logical replication message: *pglogrepl.BeginMessage
+2025/07/16 18:08:31 BEGIN
+2025/07/16 18:08:31 Logical replication message: *pglogrepl.RelationMessageV2
+2025/07/16 18:08:31 RelationMessageV2: public.whiskies
+2025/07/16 18:08:31 Logical replication message: *pglogrepl.InsertMessageV2
+2025/07/16 18:08:31 insert for xid 0
+2025/07/16 18:08:31 INSERT INTO public.whiskies: map[age:3 id:5 name:A1 whisky_type_id:1]
+2025/07/16 18:08:31 Logical replication message: *pglogrepl.InsertMessageV2
+2025/07/16 18:08:31 insert for xid 0
+2025/07/16 18:08:31 INSERT INTO public.whiskies: map[age:3 id:6 name:A1 whisky_type_id:1]
+2025/07/16 18:08:31 Logical replication message: *pglogrepl.InsertMessageV2
+2025/07/16 18:08:31 insert for xid 0
+2025/07/16 18:08:31 INSERT INTO public.whiskies: map[age:3 id:9 name:A2 whisky_type_id:1]
+2025/07/16 18:08:31 Logical replication message: *pglogrepl.InsertMessageV2
+2025/07/16 18:08:31 insert for xid 0
+2025/07/16 18:08:31 INSERT INTO public.whiskies: map[age:3 id:10 name:A2 whisky_type_id:1]
+2025/07/16 18:08:31 Logical replication message: *pglogrepl.CommitMessage
+2025/07/16 18:08:31 COMMIT
+2025/07/16 18:08:31 Logical replication message: *pglogrepl.BeginMessage
+2025/07/16 18:08:31 BEGIN
+2025/07/16 18:08:31 Logical replication message: *pglogrepl.InsertMessageV2
+2025/07/16 18:08:31 insert for xid 0
+2025/07/16 18:08:31 INSERT INTO public.whiskies: map[age:3 id:7 name:B1 whisky_type_id:1]
+2025/07/16 18:08:31 Logical replication message: *pglogrepl.InsertMessageV2
+2025/07/16 18:08:31 insert for xid 0
+2025/07/16 18:08:31 INSERT INTO public.whiskies: map[age:3 id:8 name:B1 whisky_type_id:1]
+2025/07/16 18:08:31 Logical replication message: *pglogrepl.InsertMessageV2
+2025/07/16 18:08:31 insert for xid 0
+2025/07/16 18:08:31 INSERT INTO public.whiskies: map[age:3 id:11 name:B2 whisky_type_id:1]
+2025/07/16 18:08:31 Logical replication message: *pglogrepl.InsertMessageV2
+2025/07/16 18:08:31 insert for xid 0
+2025/07/16 18:08:31 INSERT INTO public.whiskies: map[age:3 id:12 name:B2 whisky_type_id:1]
+2025/07/16 18:08:31 Logical replication message: *pglogrepl.CommitMessage
+2025/07/16 18:08:31 COMMIT
