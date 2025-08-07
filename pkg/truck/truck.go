@@ -108,6 +108,7 @@ func (t *Truck) Start() {
 
 				if changeset.StreamPosition != 0 {
 					t.Writer.SetCurrentPosition(changeset.StreamPosition)
+					t.ReplicationClient.MarkTransactionCompleted(changeset.StreamPosition)
 				}
 			case <-t.KillChan:
 				log.Printf("[Truck %s] Received kill msg. Exiting...\n", t.Name)

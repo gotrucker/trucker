@@ -18,25 +18,28 @@ import (
 )
 
 type ReplicationClient struct {
-	publicationName string
-	tables          []string
-	connCfg         config.Connection
-	conn            *pgx.Conn
-	streamConn      *pgx.Conn
-	writtenLSN      pglogrepl.LSN
-	running         bool
-	done            chan bool
-	columnsCache    map[string][]db.Column
+	publicationName      string
+	tables               []string
+	connCfg              config.Connection
+	conn                 *pgx.Conn
+	streamConn           *pgx.Conn
+	writtenLSN           pglogrepl.LSN
+	inFlightTransactions map[uint64]bool
+	lastReportedLSN      pglogrepl.LSN
+	running              bool
+	done                 chan bool
+	columnsCache         map[string][]db.Column
 }
 
 func NewReplicationClient(tables []string, connCfg config.Connection, uniqueId string) *ReplicationClient {
 	return &ReplicationClient{
-		publicationName: fmt.Sprintf("trucker_%s%s", connCfg.Database, uniqueId),
-		tables:          tables,
-		connCfg:         connCfg,
-		running:         false,
-		done:            make(chan bool, 1),
-		columnsCache:    make(map[string][]db.Column),
+		publicationName:      fmt.Sprintf("trucker_%s%s", connCfg.Database, uniqueId),
+		tables:               tables,
+		connCfg:              connCfg,
+		inFlightTransactions: make(map[uint64]bool),
+		running:              false,
+		done:                 make(chan bool, 1),
+		columnsCache:         make(map[string][]db.Column),
 	}
 }
 
@@ -137,15 +140,16 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 			}
 
 			if time.Now().After(nextStandbyMessageDeadline) {
+				safeReportLSN := rc.getSafeReportLSN(clientXLogPos)
 				err = pglogrepl.SendStandbyStatusUpdate(
 					context.Background(),
 					conn,
-					pglogrepl.StandbyStatusUpdate{WALWritePosition: rc.writtenLSN},
+					pglogrepl.StandbyStatusUpdate{WALWritePosition: safeReportLSN},
 				)
 				if err != nil {
 					log.Fatalln("SendStandbyStatusUpdate failed:", err)
 				}
-				// log.Printf("Sent Standby status message at %s\n", clientXLogPos.String())
+				// log.Printf("Sent Standby status message at %s\n", safeReportLSN.String())
 				nextStandbyMessageDeadline = time.Now().Add(standbyMessageTimeout)
 			}
 
@@ -226,6 +230,38 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 
 func (rc *ReplicationClient) SetWrittenLSN(lsn uint64) {
 	rc.writtenLSN = pglogrepl.LSN(lsn)
+}
+
+func (rc *ReplicationClient) MarkTransactionInFlight(lsn uint64) {
+	rc.inFlightTransactions[lsn] = true
+}
+
+func (rc *ReplicationClient) MarkTransactionCompleted(lsn uint64) {
+	delete(rc.inFlightTransactions, lsn)
+}
+
+func (rc *ReplicationClient) getSafeReportLSN(clientXLogPos pglogrepl.LSN) pglogrepl.LSN {
+	reportLSN := clientXLogPos
+	
+	if len(rc.inFlightTransactions) > 0 {
+		minInFlightLSN := pglogrepl.LSN(^uint64(0)) // max uint64
+		for lsn := range rc.inFlightTransactions {
+			if pglogrepl.LSN(lsn) < minInFlightLSN {
+				minInFlightLSN = pglogrepl.LSN(lsn)
+			}
+		}
+		if minInFlightLSN < reportLSN {
+			reportLSN = minInFlightLSN
+		}
+	}
+	
+	// Never go backwards
+	if reportLSN > rc.lastReportedLSN {
+		rc.lastReportedLSN = reportLSN
+		return reportLSN
+	}
+	
+	return rc.lastReportedLSN
 }
 
 func (rc *ReplicationClient) Close() {

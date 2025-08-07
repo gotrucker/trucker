@@ -107,18 +107,25 @@ func catchup(replicationClients map[string]*postgres.ReplicationClient, trucks m
 					break
 				}
 
+				hasRelevantChangesets := false
 				for changeset := range transaction.Changesets {
 					changeset.StreamPosition = transaction.StreamPosition
 					for _, truck := range trucks[connName] {
 						if !slices.Contains(skipTables[connName], changeset.Table) &&
 							slices.Contains(truck.InputTables, changeset.Table) {
 							truck.ProcessChangeset(changeset)
+							hasRelevantChangesets = true
 						}
 					}
 				}
 
 				if transaction.StreamPosition > 0 {
-					rc.SetWrittenLSN(transaction.StreamPosition)
+					if hasRelevantChangesets {
+						rc.MarkTransactionInFlight(transaction.StreamPosition)
+					} else {
+						// No trucks care about this transaction, safe to mark as processed
+						rc.SetWrittenLSN(transaction.StreamPosition)
+					}
 				}
 			}
 		}
@@ -155,17 +162,24 @@ func streamChanges(trucksByInputConnection map[string][]*truck.Truck) {
 			transaction := <-changesChan
 
 			if transaction != nil {
+				hasRelevantChangesets := false
 				for changeset := range transaction.Changesets {
 					changeset.StreamPosition = transaction.StreamPosition
 					for _, truck := range trucks {
 						if slices.Contains(truck.InputTables, changeset.Table) {
 							truck.ProcessChangeset(changeset)
+							hasRelevantChangesets = true
 						}
 					}
 				}
 
 				if transaction.StreamPosition > 0 {
-					rc.SetWrittenLSN(transaction.StreamPosition)
+					if hasRelevantChangesets {
+						rc.MarkTransactionInFlight(transaction.StreamPosition)
+					} else {
+						// No trucks care about this transaction, safe to mark as processed
+						rc.SetWrittenLSN(transaction.StreamPosition)
+					}
 				}
 			}
 		}
