@@ -6,6 +6,8 @@ DROP PUBLICATION IF EXISTS trucker_trucker_2;
 SELECT pg_terminate_backend(active_pid) FROM pg_replication_slots;
 SELECT pg_drop_replication_slot(slot_name) FROM pg_replication_slots;
 
+CREATE TYPE age_category AS ENUM ('young', 'middle-aged', 'old');
+
 CREATE TABLE public.countries (
   id int PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   name text NOT NULL
@@ -21,6 +23,7 @@ CREATE TABLE public.whiskies (
   id int PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
   name text NOT NULL,
   age int NOT NULL,
+  category age_category DEFAULT 'young',
   whisky_type_id int NOT NULL REFERENCES whisky_types(id)
 );
 

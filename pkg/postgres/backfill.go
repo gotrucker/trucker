@@ -33,6 +33,8 @@ func (rc *ReplicationClient) ReadBackfillData(table string, snapshotName string,
 		`SELECT string_agg(
   CASE WHEN data_type = 'ARRAY' THEN
     'NULL::' || substr(udt_name, 2) || '[] old__' || column_name
+  WHEN data_type = 'USER-DEFINED' THEN
+	'NULL::' || udt_name || ' old__' || column_name
   ELSE
     'NULL::' || data_type || ' old__' || column_name
   END,
