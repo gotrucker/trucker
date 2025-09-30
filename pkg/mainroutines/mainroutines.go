@@ -53,6 +53,11 @@ func Start(projectPath string) (chan truck.ExitMsg, []config.Truck, map[string][
 }
 
 func backfill(replicationClients map[string]*postgres.ReplicationClient, trucks map[string][]*truck.Truck) (map[string][]string, map[string]uint64) {
+	// FUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU we can't track whether backfills are
+	// done just from input tables... it needs to be per truck! it's possible
+	// different trucks use the same input tables, so this means that if you add
+	// a truck to an existing setup, it won't backfill if there was already an
+	// existing truck using the same input tables...
 	backfillLSNs := make(map[string]uint64)
 	backfilledTables := make(map[string][]string)
 
