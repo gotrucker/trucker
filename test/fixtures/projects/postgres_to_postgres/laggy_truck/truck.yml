@@ -1,0 +1,5 @@
+input:
+  connection: pg_input_conn
+  table: public.countries
+output:
+  connection: pg_input_conn

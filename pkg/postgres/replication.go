@@ -23,7 +23,8 @@ type ReplicationClient struct {
 	connCfg         config.Connection
 	conn            *pgx.Conn
 	streamConn      *pgx.Conn
-	writtenLSN      pglogrepl.LSN
+	lastSentLSN     pglogrepl.LSN
+	lastWrittenLSN  pglogrepl.LSN
 	running         bool
 	done            chan bool
 	columnsCache    map[string][]db.Column
@@ -137,15 +138,24 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 			}
 
 			if time.Now().After(nextStandbyMessageDeadline) {
+				var confirmLSN pglogrepl.LSN
+
+				if rc.lastSentLSN == rc.lastWrittenLSN && rc.lastSentLSN > 0 {
+					// we're up to date so we can move the replication slot forward freely
+					confirmLSN = clientXLogPos
+				} else {
+					// we still haven't finished writing some stuff, so let's move the replication slot only up to the latest confirmed write
+					confirmLSN = rc.lastWrittenLSN
+				}
+
 				err = pglogrepl.SendStandbyStatusUpdate(
 					context.Background(),
 					conn,
-					pglogrepl.StandbyStatusUpdate{WALWritePosition: rc.writtenLSN},
+					pglogrepl.StandbyStatusUpdate{WALWritePosition: confirmLSN},
 				)
 				if err != nil {
 					log.Fatalln("SendStandbyStatusUpdate failed:", err)
 				}
-				// log.Printf("Sent Standby status message at %s\n", clientXLogPos.String())
 				nextStandbyMessageDeadline = time.Now().Add(standbyMessageTimeout)
 			}
 
@@ -200,6 +210,7 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 					StreamPosition: uint64(xld.WALStart),
 					Changesets:     makeChangesets(xld.WALData, rc.columnsCache),
 				}
+				rc.lastSentLSN = xld.WALStart
 
 				if xld.WALStart > clientXLogPos {
 					clientXLogPos = xld.WALStart
@@ -225,7 +236,7 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 }
 
 func (rc *ReplicationClient) SetWrittenLSN(lsn uint64) {
-	rc.writtenLSN = pglogrepl.LSN(lsn)
+	rc.lastWrittenLSN = pglogrepl.LSN(lsn)
 }
 
 func (rc *ReplicationClient) Close() {

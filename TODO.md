@@ -15,6 +15,7 @@
 - Possibility to force SSL on db connections
 
 ## Better Logging
+https://github.com/uber-go/zap
 
 We need to have logging levels at the very least:
 - WARN: Only startup/shutdown messages + stuff that is out of the ordinary
