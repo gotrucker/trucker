@@ -118,7 +118,7 @@ func catchup(replicationClients map[string]*postgres.ReplicationClient, trucks m
 				}
 
 				if transaction.StreamPosition > 0 {
-					rc.SetWrittenLSN(transaction.StreamPosition)
+					rc.SetProcessedLSN(transaction.StreamPosition)
 				}
 			}
 		}
@@ -165,7 +165,7 @@ func streamChanges(trucksByInputConnection map[string][]*truck.Truck) {
 				}
 
 				if transaction.StreamPosition > 0 {
-					rc.SetWrittenLSN(transaction.StreamPosition)
+					rc.SetProcessedLSN(transaction.StreamPosition)
 				}
 			}
 		}

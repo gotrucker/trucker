@@ -18,15 +18,16 @@ import (
 )
 
 type ReplicationClient struct {
-	publicationName string
-	tables          []string
-	connCfg         config.Connection
-	conn            *pgx.Conn
-	streamConn      *pgx.Conn
-	writtenLSN      pglogrepl.LSN
-	running         bool
-	done            chan bool
-	columnsCache    map[string][]db.Column
+	publicationName  string
+	tables           []string
+	connCfg          config.Connection
+	conn             *pgx.Conn
+	streamConn       *pgx.Conn
+	processingLSN    pglogrepl.LSN
+	lastProcessedLSN pglogrepl.LSN
+	running          bool
+	done             chan bool
+	columnsCache     map[string][]db.Column
 }
 
 func NewReplicationClient(tables []string, connCfg config.Connection, uniqueId string) *ReplicationClient {
@@ -137,15 +138,24 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 			}
 
 			if time.Now().After(nextStandbyMessageDeadline) {
+				var confirmLSN pglogrepl.LSN
+
+				if rc.processingLSN == rc.lastProcessedLSN && rc.processingLSN > 0 {
+					// we're up to date so we can move the replication slot forward freely
+					confirmLSN = clientXLogPos
+				} else {
+					// we still haven't finished writing some stuff, so let's move the replication slot only up to the latest confirmed write
+					confirmLSN = rc.lastProcessedLSN
+				}
+
 				err = pglogrepl.SendStandbyStatusUpdate(
 					context.Background(),
 					conn,
-					pglogrepl.StandbyStatusUpdate{WALWritePosition: rc.writtenLSN},
+					pglogrepl.StandbyStatusUpdate{WALWritePosition: confirmLSN},
 				)
 				if err != nil {
 					log.Fatalln("SendStandbyStatusUpdate failed:", err)
 				}
-				// log.Printf("Sent Standby status message at %s\n", clientXLogPos.String())
 				nextStandbyMessageDeadline = time.Now().Add(standbyMessageTimeout)
 			}
 
@@ -200,6 +210,7 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 					StreamPosition: uint64(xld.WALStart),
 					Changesets:     makeChangesets(xld.WALData, rc.columnsCache),
 				}
+				rc.processingLSN = xld.WALStart
 
 				if xld.WALStart > clientXLogPos {
 					clientXLogPos = xld.WALStart
@@ -224,8 +235,8 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 	return changes
 }
 
-func (rc *ReplicationClient) SetWrittenLSN(lsn uint64) {
-	rc.writtenLSN = pglogrepl.LSN(lsn)
+func (rc *ReplicationClient) SetProcessedLSN(lsn uint64) {
+	rc.lastProcessedLSN = pglogrepl.LSN(lsn)
 }
 
 func (rc *ReplicationClient) Close() {

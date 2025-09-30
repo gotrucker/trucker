@@ -158,6 +158,7 @@ func TestPostgresToClickhouseLarge(t *testing.T) {
 	}
 
 	exitChan := startTrucker("postgres_to_clickhouse")
+	defer close(exitChan)
 
 	// Test backfill
 	for i := 0; ; i++ {
@@ -217,6 +218,4 @@ but got %v: `, expectedResult, allRows)
 
 		time.Sleep(500 * time.Millisecond)
 	}
-
-	close(exitChan)
 }

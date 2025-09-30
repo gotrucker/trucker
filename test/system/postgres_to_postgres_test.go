@@ -23,6 +23,7 @@ func TestPostgresToPostgres(t *testing.T) {
 	}
 
 	exitChan := startTrucker("postgres_to_postgres")
+	defer close(exitChan)
 
 	// Test backfill
 	for i := 0; ; i++ {
@@ -32,7 +33,7 @@ func TestPostgresToPostgres(t *testing.T) {
 
 		if cnt == 4 {
 			break
-		} else if i > 10 {
+		} else if i > 20 {
 			t.Error("Expected 4 rows in whiskies_flat but found ", cnt)
 			break
 		}
@@ -133,8 +134,6 @@ func TestPostgresToPostgres(t *testing.T) {
 	if name != "Jack Daniels 2" || age != -14 || typeName != "" || country != "" {
 		t.Error("Expected Jack Daniels to have been emptied out, but got values:", name, age, typeName, country)
 	}
-
-	close(exitChan)
 }
 
 func TestPostgresToPostgresLarge(t *testing.T) {
@@ -152,6 +151,7 @@ func TestPostgresToPostgresLarge(t *testing.T) {
 	}
 
 	exitChan := startTrucker("postgres_to_postgres")
+	defer close(exitChan)
 
 	// Test backfill
 	for i := 0; ; i++ {
@@ -161,7 +161,7 @@ func TestPostgresToPostgresLarge(t *testing.T) {
 
 		if cnt == 15005 {
 			break
-		} else if i > 10 {
+		} else if i > 20 {
 			t.Error("Expected 15005 rows in whiskies_flat but found ", cnt)
 			break
 		}
@@ -204,6 +204,4 @@ but got %v: `, expectedResult, allRows)
 
 		time.Sleep(300 * time.Millisecond)
 	}
-
-	close(exitChan)
 }

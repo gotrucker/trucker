@@ -37,6 +37,11 @@ CREATE TABLE public.whiskies_flat (
   country text
 );
 
+CREATE TABLE public.double_countries (
+  id int PRIMARY KEY,
+  name text NOT NULL
+);
+
 CREATE TABLE public.weird_types (
   a_number bigint,
   a_bool boolean,
