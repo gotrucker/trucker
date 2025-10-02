@@ -70,7 +70,7 @@ func TestWrite(t *testing.T) {
 	rows := make(chan [][]any, 1)
 	rows <- [][]any{{"1", "Green Spot", int32(10), "Single Pot Still", "Ireland"}}
 	close(rows)
-	w.Write(&db.ChanChangeset{
+	w.Write(&db.Change{
 		Operation: db.Insert,
 		Columns: []db.Column{
 			{Name: "id", Type: db.String},

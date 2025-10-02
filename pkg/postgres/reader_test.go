@@ -18,7 +18,7 @@ FROM {{ .rows }}
 JOIN whisky_types t ON t.id = r.whisky_type_id`)
 	defer r.Close()
 
-	changeset := &db.Changeset{
+	changeset := &db.Change{
 		Operation: db.Insert,
 		Table:     "whiskies",
 		Columns: []db.Column{
@@ -107,7 +107,7 @@ WHERE table_schema = 'public'
 		cols[i] = db.Column{Name: col, Type: pgTypeToDbType(types[i])}
 	}
 
-	changeset := &db.Changeset{
+	changeset := &db.Change{
 		Operation: db.Insert,
 		Table:     "weird_types",
 		Columns:   cols,

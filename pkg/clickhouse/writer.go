@@ -78,7 +78,7 @@ func (w *Writer) GetCurrentPosition() uint64 {
 	return lsn.Row(0)
 }
 
-func (w *Writer) Write(changeset *db.ChanChangeset) {
+func (w *Writer) Write(changeset *db.Change) {
 	ctx := context.Background()
 	conn, err := w.conn.Acquire(ctx)
 	if err != nil {
@@ -118,7 +118,7 @@ func (w *Writer) Close() {
 	w.conn.Close()
 }
 
-func (w *Writer) prepareTempTable(ctx context.Context, conn *chpool.Client, changeset *db.ChanChangeset) {
+func (w *Writer) prepareTempTable(ctx context.Context, conn *chpool.Client, changeset *db.Change) {
 	sb := strings.Builder{}
 	sb.WriteString("CREATE TEMPORARY TABLE r (")
 	sb.WriteString(makeColumnTypesSql(changeset.Columns).String())
