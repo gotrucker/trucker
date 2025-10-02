@@ -38,6 +38,7 @@ services:
     - -cmax_replication_slots=10
     - -chot_standby_feedback=on
     - -clog_statement=all
+    - -clogical_decoding_work_mem=64kB
 
   pg_input_replica:
     image: pg-with-wal2json

@@ -78,7 +78,7 @@ func (w *Writer) GetCurrentPosition() uint64 {
 	return lsn.Row(0)
 }
 
-func (w *Writer) Write(changeset *db.ChanChangeset) bool {
+func (w *Writer) Write(changeset *db.Change) bool {
 	ctx := context.Background()
 	conn, err := w.conn.Acquire(ctx)
 	if err != nil {
@@ -122,7 +122,7 @@ func (w *Writer) Close() {
 	w.conn.Close()
 }
 
-func populateTempTable(ctx context.Context, conn *chpool.Client, changeset *db.ChanChangeset) bool {
+func populateTempTable(ctx context.Context, conn *chpool.Client, changeset *db.Change) bool {
 	tableCreated := false
 
 	for batch := range changeset.Rows {

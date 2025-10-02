@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/jackc/pglogrepl"
 	"github.com/tonyfg/trucker/pkg/db"
 )
 
@@ -34,7 +35,134 @@ type WalChange struct {
 
 const maxPreparedStatementArgs = 32767
 
-func makeChangesets(wal2jsonChanges []byte, columnsCache map[string][]db.Column) iter.Seq[*db.Changeset] {
+func processV2(
+	walData []byte,
+	inStream *bool,
+	relations map[uint32]*pglogrepl.RelationMessageV2,
+	typeMap *pgtype.Map,
+) (*db.Change, bool) {
+	logicalMsg, err := pglogrepl.ParseV2(walData, *inStream)
+	if err != nil {
+		log.Fatalf("Parse logical replication message: %s", err)
+	}
+	log.Printf("Logical replication message: %T\n", logicalMsg)
+
+	switch logicalMsg := logicalMsg.(type) {
+	case *pglogrepl.RelationMessageV2:
+		log.Printf("RelationMessageV2: %s.%s\n", logicalMsg.Namespace, logicalMsg.RelationName)
+		relations[logicalMsg.RelationID] = logicalMsg
+
+	case *pglogrepl.BeginMessage:
+		// Indicates the beginning of a group of changes in a transaction. This is only sent for committed transactions. You won't get any events from rolled back transactions.
+		log.Println("BEGIN")
+
+	case *pglogrepl.CommitMessage:
+		log.Println("COMMIT")
+
+	case *pglogrepl.InsertMessageV2:
+		rel, ok := relations[logicalMsg.RelationID]
+		if !ok {
+			log.Fatalf("unknown relation ID %d", logicalMsg.RelationID)
+		}
+		values := map[string]interface{}{}
+		for idx, col := range logicalMsg.Tuple.Columns {
+			colName := rel.Columns[idx].Name
+			switch col.DataType {
+			case 'n': // null
+				values[colName] = nil
+			case 'u': // unchanged toast
+				// This TOAST value was not changed. TOAST values are not stored in the tuple, and logical replication doesn't want to spend a disk read to fetch its value for you.
+			case 't': //text
+				val, err := decodeTextColumnData(typeMap, col.Data, rel.Columns[idx].DataType)
+				if err != nil {
+					log.Fatalln("error decoding column data:", err)
+				}
+				values[colName] = val
+			}
+		}
+		log.Printf("insert for xid %d\n", logicalMsg.Xid)
+		log.Printf("INSERT INTO %s.%s: %v", rel.Namespace, rel.RelationName, values)
+		// TODO CONA ESTAS AQUI: é preciso devolver estes values no formato que a gente definiu como return value.
+
+	case *pglogrepl.UpdateMessageV2:
+		// ...
+		rel, ok := relations[logicalMsg.RelationID]
+		if !ok {
+			log.Fatalf("unknown relation ID %d", logicalMsg.RelationID)
+		}
+		values := map[string]interface{}{}
+		for idx, col := range logicalMsg.NewTuple.Columns {
+			colName := rel.Columns[idx].Name
+			switch col.DataType {
+			case 'n': // null
+				values[colName] = nil
+			case 'u': // unchanged toast
+				// This TOAST value was not changed. TOAST values are not stored in the tuple, and logical replication doesn't want to spend a disk read to fetch its value for you.
+			case 't': //text
+				val, err := decodeTextColumnData(typeMap, col.Data, rel.Columns[idx].DataType)
+				if err != nil {
+					log.Fatalln("error decoding column data:", err)
+				}
+				values[colName] = val
+			}
+		}
+		for idx, col := range logicalMsg.OldTuple.Columns {
+			colName := rel.Columns[idx].Name
+			switch col.DataType {
+			case 'n': // null
+				values[colName] = nil
+			case 'u': // unchanged toast
+				// This TOAST value was not changed. TOAST values are not stored in the tuple, and logical replication doesn't want to spend a disk read to fetch its value for you.
+			case 't': //text
+				val, err := decodeTextColumnData(typeMap, col.Data, rel.Columns[idx].DataType)
+				if err != nil {
+					log.Fatalln("error decoding column data:", err)
+				}
+				values[fmt.Sprintf("old_%s", colName)] = val
+			}
+		}
+		log.Printf("update for xid %d\n", logicalMsg.Xid)
+		log.Printf("UPDATE %s.%s: %v", rel.Namespace, rel.RelationName, values)
+	case *pglogrepl.DeleteMessageV2:
+		log.Printf("delete for xid %d\n", logicalMsg.Xid)
+		// ...
+	case *pglogrepl.TruncateMessageV2:
+		log.Printf("truncate for xid %d\n", logicalMsg.Xid)
+		// ...
+
+	case *pglogrepl.TypeMessageV2:
+		log.Println("TYPE")
+	case *pglogrepl.OriginMessage:
+		log.Println("ORIGIN")
+
+	case *pglogrepl.LogicalDecodingMessageV2:
+		log.Printf("Logical decoding message: %q, %q, %d", logicalMsg.Prefix, logicalMsg.Content, logicalMsg.Xid)
+
+	case *pglogrepl.StreamStartMessageV2:
+		*inStream = true
+		log.Printf("Stream start message: xid %d, first segment? %d", logicalMsg.Xid, logicalMsg.FirstSegment)
+	case *pglogrepl.StreamStopMessageV2:
+		*inStream = false
+		log.Printf("Stream stop message")
+	case *pglogrepl.StreamCommitMessageV2:
+		log.Printf("Stream commit message: xid %d", logicalMsg.Xid)
+	case *pglogrepl.StreamAbortMessageV2:
+		log.Printf("Stream abort message: xid %d", logicalMsg.Xid)
+	default:
+		log.Printf("Unknown message type in pgoutput stream: %T", logicalMsg)
+	}
+
+	return nil, true // CONA apaga isto
+}
+
+func decodeTextColumnData(mi *pgtype.Map, data []byte, dataType uint32) (interface{}, error) {
+	if dt, ok := mi.TypeForOID(dataType); ok {
+		return dt.Codec.DecodeValue(mi, dataType, pgtype.TextFormatCode, data)
+	}
+	return string(data), nil
+}
+
+func makeChangesets(wal2jsonChanges []byte, columnsCache map[string][]db.Column) iter.Seq[*db.Change] {
 	data := WalData{}
 	d := json.NewDecoder(bytes.NewReader(wal2jsonChanges))
 	d.UseNumber()
@@ -42,8 +170,8 @@ func makeChangesets(wal2jsonChanges []byte, columnsCache map[string][]db.Column)
 		log.Fatalf("Failed to unmarshal wal2json payload: %v\n", err)
 	}
 
-	return func(yield func(*db.Changeset) bool) {
-		var changeset *db.Changeset = nil
+	return func(yield func(*db.Change) bool) {
+		var changeset *db.Change = nil
 
 		for _, change := range data.Changes {
 			table := fmt.Sprintf("%s.%s", change.Schema, change.Table)
@@ -69,11 +197,11 @@ func makeChangesets(wal2jsonChanges []byte, columnsCache map[string][]db.Column)
 					log.Fatalf("Unknown operation: %s\n", change.Kind)
 				}
 
-				changeset = &db.Changeset{
+				changeset = &db.Change{
 					Table:     table,
 					Operation: operation,
 					Columns:   changesetCols(tableCols),
-					Rows:      make([][]any, 0, 1),
+					Rows:      make(chan [][]any),
 				}
 			}
 
@@ -85,7 +213,7 @@ func makeChangesets(wal2jsonChanges []byte, columnsCache map[string][]db.Column)
 					if valueIdx < len(change.ColumnValues) {
 						row[i] = change.ColumnValues[valueIdx]
 					} else {
-						// TODO: Remove this since the issue was probably fixed
+						// TODO: Remove these logs since the issue was probably fixed
 						//       by changing change.ColumnValues[i] to
 						//       change.ColumnValues[valueIdx] a couple of lines
 						//       above.

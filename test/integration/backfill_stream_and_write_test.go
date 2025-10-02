@@ -72,7 +72,7 @@ GROUP BY id`,
 		rowChan <- rows
 		close(rowChan)
 
-		changeset := &db.ChanChangeset{
+		changeset := &db.Change{
 			Operation: db.Insert,
 			Table:     "public.whiskies",
 			Columns:   cols,

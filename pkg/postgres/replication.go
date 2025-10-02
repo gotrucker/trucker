@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tonyfg/trucker/pkg/config"
 	"github.com/tonyfg/trucker/pkg/db"
 )
@@ -95,15 +96,11 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 
 	conn := rc.streamConn.PgConn()
 
-	configuredTables := ""
-	for i, table := range rc.tables {
-		if i > 0 {
-			configuredTables += ","
-		}
-		configuredTables += escapeWal2JsonTableName(table)
+	pluginArguments := []string{
+		"proto_version '2'",
+		fmt.Sprintf("publication_names '%s'", rc.publicationName),
+		"streaming 'true'",
 	}
-
-	pluginArguments := []string{fmt.Sprintf("\"add-tables\" '%s'", configuredTables)}
 	err := pglogrepl.StartReplication(
 		context.Background(),
 		conn,
@@ -116,15 +113,19 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 	}
 	log.Println("Logical replication started on slot", rc.publicationName)
 
-	changes := make(chan *db.Transaction)
+	transactions := make(chan *db.Transaction)
 	rc.running = true
 
 	go func() {
 		log.Println("Goroutine started to read from replication stream")
 
+		typeMap := pgtype.NewMap()
+		inStream := false
+		relations := map[uint32]*pglogrepl.RelationMessageV2{}
 		clientXLogPos := startLSN
 		standbyMessageTimeout := time.Second * 10
 		nextStandbyMessageDeadline := time.Now().Add(standbyMessageTimeout)
+		var transaction *db.Transaction
 
 	Out:
 		for {
@@ -206,9 +207,19 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 					log.Fatalln("ParseXLogData failed:", err)
 				}
 
-				changes <- &db.Transaction{
-					StreamPosition: uint64(xld.WALStart),
-					Changesets:     makeChangesets(xld.WALData, rc.columnsCache),
+				if transaction == nil {
+					transaction = &db.Transaction{
+						StreamPosition: uint64(xld.WALStart),
+						Changes:        make(chan *db.Change, 3),
+					}
+					transactions <- transaction
+				}
+
+				change, done := processV2(xld.WALData, &inStream, relations, typeMap)
+				transaction.Changes <- change
+				if done {
+					close(transaction.Changes)
+					transaction = nil
 				}
 				rc.processingLSN = xld.WALStart
 
@@ -220,7 +231,7 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 					log.Println("Reached end LSN. Stopping replication...")
 					rc.running = false
 					rc.ResetStreamConn()
-					close(changes)
+					close(transactions)
 					return
 				}
 			}
@@ -228,11 +239,11 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 
 		log.Println("Replication stream exiting...")
 		rc.streamConn.Close(context.Background())
-		close(changes)
+		close(transactions)
 		rc.Close()
 	}()
 
-	return changes
+	return transactions
 }
 
 func (rc *ReplicationClient) SetProcessedLSN(lsn uint64) {
@@ -304,7 +315,7 @@ func (rc *ReplicationClient) setupPublication() []string {
 		}
 	}
 
-	// FIXME: This will go to shit if a backfill fails midway through...
+	// FIXME: Things will go to shit if a backfill fails midway through...
 	//        We should actually only add the tables to the publication after the
 	//        backfill is done, and right before starting to stream
 	if len(tablesToPublish) > 0 {
@@ -339,7 +350,7 @@ func (rc *ReplicationClient) setupReplicationSlot(createBackfillSnapshot bool) (
 	var backfillLSN pglogrepl.LSN
 
 	if slotCount < 1 {
-		log.Println("Replication slot doesn't exit yet. Creating...")
+		log.Println("Replication slot doesn't exist yet. Creating...")
 		backfillLSN = rc.identifySystem().XLogPos
 		snapshotName = rc.createReplicationSlot(false)
 	} else if createBackfillSnapshot {
@@ -401,7 +412,7 @@ func (rc *ReplicationClient) createReplicationSlot(temporary bool) string {
 		context.Background(),
 		rc.streamConn.PgConn(),
 		fmt.Sprintf("\"%s\"", slotName),
-		"wal2json",
+		"pgoutput",
 		pglogrepl.CreateReplicationSlotOptions{
 			Temporary:      temporary,
 			SnapshotAction: "EXPORT_SNAPSHOT",
@@ -425,9 +436,13 @@ func (rc *ReplicationClient) connect(replication bool) *pgx.Conn {
 		port = 5432
 	}
 
-	replicationParam := ""
+	params := make([]string, 0, 0)
 	if replication {
-		replicationParam = "?replication=database"
+		params = append(params, "replication=database")
+	}
+
+	if rc.connCfg.Ssl != "" {
+		params = append(params, fmt.Sprintf("sslmode=%s", rc.connCfg.Ssl))
 	}
 
 	connString := fmt.Sprintf(
@@ -437,7 +452,7 @@ func (rc *ReplicationClient) connect(replication bool) *pgx.Conn {
 		url.QueryEscape(rc.connCfg.Host),
 		port,
 		url.QueryEscape(rc.connCfg.Database),
-		replicationParam)
+		params)
 
 	config, err := pgx.ParseConfig(connString)
 	if err != nil {
@@ -471,6 +486,6 @@ func (rc *ReplicationClient) exec(sql string, values ...any) {
 
 // space, single quote, comma, period, asterisk need to be escaped with \
 // https://github.com/eulerto/wal2json/blob/master/README.md#parameters
-func escapeWal2JsonTableName(table string) string {
+func escapeTableName(table string) string {
 	return strings.NewReplacer(" ", `\ `, "'", `\'`, ",", `\,`, "*", `\*`).Replace(table)
 }

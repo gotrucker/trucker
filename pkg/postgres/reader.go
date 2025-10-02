@@ -32,9 +32,25 @@ func NewReader(readQuery string, cfg config.Connection) *Reader {
 	return &Reader{queryTemplate: tmpl, conn: conn}
 }
 
-func (r *Reader) Read(changeset *db.Changeset) *db.ChanChangeset {
-	if len(changeset.Columns) == 0 || len(changeset.Rows) == 0 {
+func (r *Reader) Read(changeset *db.Change) *db.Change {
+	rows := <-changeset.Rows
+	if len(changeset.Columns) == 0 || len(rows) == 0 {
 		return nil
+	}
+
+	for rowBatch := range changeset.Rows {
+		rows = append(rows, rowBatch...)
+
+		if len(changeset.Columns)*len(rows) > maxPreparedStatementArgs {
+			break
+		}
+	}
+
+	var flatValues []any
+	columnsLiteral := makeColumnsList(changeset.Columns).String()
+	tmplVars := map[string]string{
+		"operation":   db.OperationStr(changeset.Operation),
+		"input_table": changeset.Table,
 	}
 
 	// We need to hold on to a specific connection to be able to create and
@@ -45,16 +61,9 @@ func (r *Reader) Read(changeset *db.Changeset) *db.ChanChangeset {
 		panic(err)
 	}
 
-	var flatValues []any
-	columnsLiteral := makeColumnsList(changeset.Columns).String()
-	tmplVars := map[string]string{
-		"operation":   db.OperationStr(changeset.Operation),
-		"input_table": changeset.Table,
-	}
-
-	if len(changeset.Columns)*len(changeset.Rows) <= maxPreparedStatementArgs {
+	if len(changeset.Columns)*len(rows) <= maxPreparedStatementArgs {
 		// All of the data fits in a single query using a VALUES list. Let's do it!
-		valuesList, values := makeValuesList(changeset.Columns, changeset.Rows, true)
+		valuesList, values := makeValuesList(changeset.Columns, rows, true)
 		flatValues = values
 		sb := strings.Builder{}
 		sb.WriteString("(VALUES ")
@@ -68,13 +77,12 @@ func (r *Reader) Read(changeset *db.Changeset) *db.ChanChangeset {
 		// since we're over the maximum number of parameters supported by PG for
 		// a SQL query.
 		log.Printf(
-			"[Postgres Reader] Reading changeset with more than 32k parameters for %s on table %s. Using temporary table for %d rows\n",
+			"[Postgres Reader] Reading changeset with more than 32k parameters for %s on table %s. Using temporary table...\n",
 			db.OperationStr(changeset.Operation),
 			changeset.Table,
-			len(changeset.Rows),
 		)
 		tmplVars["rows"] = "r"
-		r.prepareTempTable(conn, changeset, columnsLiteral, changeset.Rows)
+		r.prepareTempTable(conn, changeset, columnsLiteral, rows, changeset.Rows)
 	}
 
 	sql := new(bytes.Buffer)
@@ -83,14 +91,14 @@ func (r *Reader) Read(changeset *db.Changeset) *db.ChanChangeset {
 		panic(err)
 	}
 
-	rows, err := conn.Query(context.Background(), sql.String(), flatValues...)
+	results, err := conn.Query(context.Background(), sql.String(), flatValues...)
 	if err != nil {
 		log.Printf("[Postgres Reader] Error running query:\n%s\n", sql.String())
 		log.Printf("[Postgres Reader] Query values:\n%v\n", flatValues)
 		panic(err)
 	}
 
-	fields := rows.FieldDescriptions()
+	fields := results.FieldDescriptions()
 	cols := make([]db.Column, len(fields))
 	for i, field := range fields {
 		cols[i] = db.Column{
@@ -105,13 +113,13 @@ func (r *Reader) Read(changeset *db.Changeset) *db.ChanChangeset {
 	go func() {
 		defer conn.Release()
 		defer conn.Exec(context.Background(), "DROP TABLE IF EXISTS r")
-		defer rows.Close()
+		defer results.Close()
 		defer close(rowChan)
 
 		rowBatch := make([][]any, 0, batchSize)
 
-		for rows.Next() {
-			row, err := rows.Values()
+		for results.Next() {
+			row, err := results.Values()
 			if err != nil {
 				panic(err)
 			}
@@ -129,7 +137,7 @@ func (r *Reader) Read(changeset *db.Changeset) *db.ChanChangeset {
 		}
 	}()
 
-	return &db.ChanChangeset{
+	return &db.Change{
 		Operation: changeset.Operation,
 		Table:     changeset.Table,
 		Columns:   cols,
@@ -141,7 +149,7 @@ func (r *Reader) Close() {
 	r.conn.Close()
 }
 
-func (r *Reader) prepareTempTable(conn *pgxpool.Conn, changeset *db.Changeset, columnsLiteral string, rows [][]any) {
+func (r *Reader) prepareTempTable(conn *pgxpool.Conn, changeset *db.Change, columnsLiteral string, rows [][]any, rowChan chan [][]any) {
 	// Create a temporary table to store the rows
 	sb := strings.Builder{}
 	sb.WriteString("CREATE TEMPORARY TABLE r (")
@@ -165,14 +173,21 @@ func (r *Reader) prepareTempTable(conn *pgxpool.Conn, changeset *db.Changeset, c
 
 	// TODO [PERFORMANCE] We don't need to rebuild the string over and over again. We can reuse it for all of the chunks except the last one if that one's smaller.
 	for chunk := range slices.Chunk(rows, chunkSize) {
-		sb := strings.Builder{}
-		sb.WriteString(baseSql)
-		valuesList, flatValues := makeValuesList(changeset.Columns, chunk, false)
-		sb.WriteString(valuesList.String())
+		insertToTempTable(conn, baseSql, changeset.Columns, chunk)
+	}
+	for chunk := range rowChan {
+		insertToTempTable(conn, baseSql, changeset.Columns, chunk)
+	}
+}
 
-		_, err = conn.Exec(context.Background(), sb.String(), flatValues...)
-		if err != nil {
-			panic(err)
-		}
+func insertToTempTable(conn *pgxpool.Conn, baseSql string, columns []db.Column, rows [][]any) {
+	sb := strings.Builder{}
+	sb.WriteString(baseSql)
+	valuesList, flatValues := makeValuesList(columns, rows, false)
+	sb.WriteString(valuesList.String())
+
+	_, err := conn.Exec(context.Background(), sb.String(), flatValues...)
+	if err != nil {
+		panic(err)
 	}
 }

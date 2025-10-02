@@ -25,7 +25,7 @@ type Truck struct {
 	Writer               db.Writer
 	OutputSql            string
 	SlowQueryThresholdMs int64
-	ChangesChan          chan *db.Changeset
+	ChangesChan          chan *db.Change
 	KillChan             chan any
 	DoneChan             chan ExitMsg
 }
@@ -39,7 +39,7 @@ func NewTruck(cfg config.Truck, rc *postgres.ReplicationClient, connCfgs map[str
 		InputTables:          cfg.Input.Tables,
 		Writer:               NewWriter(cfg.Input.Connection, cfg.Output.Sql, connCfgs[cfg.Output.Connection], uniqueId),
 		SlowQueryThresholdMs: cfg.SlowQueryThresholdMs,
-		ChangesChan:          make(chan *db.Changeset),
+		ChangesChan:          make(chan *db.Change),
 		KillChan:             make(chan any),
 		DoneChan:             doneChan,
 	}
@@ -117,7 +117,7 @@ func (t *Truck) Start() {
 	}()
 }
 
-func (t *Truck) ProcessChangeset(changeset *db.Changeset) {
+func (t *Truck) ProcessChangeset(changeset *db.Change) {
 	t.ChangesChan <- changeset
 }
 

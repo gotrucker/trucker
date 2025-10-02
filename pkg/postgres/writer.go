@@ -69,7 +69,7 @@ func (w *Writer) GetCurrentPosition() uint64 {
 	return lsn
 }
 
-func (w *Writer) Write(changeset *db.ChanChangeset) bool {
+func (w *Writer) Write(changeset *db.Change) bool {
 	// We need to hold on to a specific connection to be able to create and
 	// access the temporary table until we're done (in case we're not using a
 	// VALUES list)
@@ -136,7 +136,7 @@ func (w *Writer) Close() {
 	w.conn.Close()
 }
 
-func populateTempTable(ctx context.Context, tx pgx.Tx, changeset *db.ChanChangeset, columnsLiteral string, params []any, extraRows [][]any) {
+func populateTempTable(ctx context.Context, tx pgx.Tx, changeset *db.Change, columnsLiteral string, params []any, extraRows [][]any) {
 	// Create a temporary table to store the rows
 	sb := strings.Builder{}
 	sb.WriteString("CREATE TEMPORARY TABLE r (")

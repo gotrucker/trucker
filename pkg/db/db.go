@@ -2,7 +2,6 @@ package db
 
 import (
 	"fmt"
-	"iter"
 )
 
 const (
@@ -16,15 +15,7 @@ type Column struct {
 	Type uint8
 }
 
-type Changeset struct {
-	Table          string
-	Operation      uint8 // Insert, Update, or Delete
-	Columns        []Column
-	Rows           [][]any
-	StreamPosition uint64
-}
-
-type ChanChangeset struct {
+type Change struct {
 	Table     string
 	Operation uint8 // Insert, Update, or Delete
 	Columns   []Column
@@ -33,11 +24,11 @@ type ChanChangeset struct {
 
 type Transaction struct {
 	StreamPosition uint64
-	Changesets     iter.Seq[*Changeset]
+	Changes        chan *Change
 }
 
 type Reader interface {
-	Read(changeset *Changeset) *ChanChangeset
+	Read(changeset *Change) *Change
 	Close()
 }
 
@@ -45,7 +36,7 @@ type Writer interface {
 	SetupPositionTracking()
 	SetCurrentPosition(lsn uint64)
 	GetCurrentPosition() uint64
-	Write(changeset *ChanChangeset) bool
+	Write(changeset *Change) bool
 	TruncateTable(table string)
 	Close()
 }
