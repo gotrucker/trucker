@@ -17,31 +17,31 @@ type ExitMsg struct {
 }
 
 type Truck struct {
-	Name              string
-	ReplicationClient *postgres.ReplicationClient
-	readQuery         string
-	Reader            db.Reader
-	InputTables       []string
-	Writer            db.Writer
-	OutputSql         string
+	Name                 string
+	ReplicationClient    *postgres.ReplicationClient
+	readQuery            string
+	Reader               db.Reader
+	InputTables          []string
+	Writer               db.Writer
+	OutputSql            string
 	SlowQueryThresholdMs int64
-	ChangesChan       chan *db.Changeset
-	KillChan          chan any
-	DoneChan          chan ExitMsg
+	ChangesChan          chan *db.Changeset
+	KillChan             chan any
+	DoneChan             chan ExitMsg
 }
 
 func NewTruck(cfg config.Truck, rc *postgres.ReplicationClient, connCfgs map[string]config.Connection, doneChan chan ExitMsg, uniqueId string) Truck {
 	return Truck{
-		Name:              cfg.Name,
-		ReplicationClient: rc,
-		readQuery:         cfg.Input.Sql,
-		Reader:            NewReader(cfg.Input.Sql, connCfgs[cfg.Input.Connection]),
-		InputTables:       cfg.Input.Tables,
-		Writer:            NewWriter(cfg.Input.Connection, cfg.Output.Sql, connCfgs[cfg.Output.Connection], uniqueId),
+		Name:                 cfg.Name,
+		ReplicationClient:    rc,
+		readQuery:            cfg.Input.Sql,
+		Reader:               NewReader(cfg.Input.Sql, connCfgs[cfg.Input.Connection]),
+		InputTables:          cfg.Input.Tables,
+		Writer:               NewWriter(cfg.Input.Connection, cfg.Output.Sql, connCfgs[cfg.Output.Connection], uniqueId),
 		SlowQueryThresholdMs: cfg.SlowQueryThresholdMs,
-		ChangesChan:       make(chan *db.Changeset),
-		KillChan:          make(chan any),
-		DoneChan:          doneChan,
+		ChangesChan:          make(chan *db.Changeset),
+		KillChan:             make(chan any),
+		DoneChan:             doneChan,
 	}
 }
 

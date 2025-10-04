@@ -8,9 +8,9 @@ import (
 )
 
 type Truck struct {
-	Name  string
+	Name                 string
 	SlowQueryThresholdMs int64 `yaml:"slow_query_threshold_ms"`
-	Input struct {
+	Input                struct {
 		Connection string   `yaml:"connection"`
 		Table      string   `yaml:"table"`
 		Tables     []string `yaml:"tables"`
