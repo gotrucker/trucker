@@ -96,10 +96,6 @@ func (t *Truck) Start() {
 					log.Printf("[Truck %s] Slow input query: took %dms for %d columns x %d rows.\n", t.Name, time.Since(now).Milliseconds(), len(changeset.Columns), len(changeset.Rows))
 				}
 
-				if resultChangeset == nil {
-					continue
-				}
-
 				now = time.Now()
 				t.Writer.Write(resultChangeset)
 				if time.Since(now).Milliseconds() > t.SlowQueryThresholdMs {

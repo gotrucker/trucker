@@ -45,7 +45,7 @@ type Writer interface {
 	SetupPositionTracking()
 	SetCurrentPosition(lsn uint64)
 	GetCurrentPosition() uint64
-	Write(changeset *ChanChangeset)
+	Write(changeset *ChanChangeset) bool
 	TruncateTable(table string)
 	Close()
 }

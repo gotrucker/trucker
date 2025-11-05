@@ -69,7 +69,7 @@ func (w *Writer) GetCurrentPosition() uint64 {
 	return lsn
 }
 
-func (w *Writer) Write(changeset *db.ChanChangeset) {
+func (w *Writer) Write(changeset *db.ChanChangeset) bool {
 	// We need to hold on to a specific connection to be able to create and
 	// access the temporary table until we're done (in case we're not using a
 	// VALUES list)
@@ -94,12 +94,12 @@ func (w *Writer) Write(changeset *db.ChanChangeset) {
 
 	if len(excessRows) > 0 {
 		log.Println("[Postgres Writer] Writing changeset with more than 32k parameters. Using temporary table...")
-		w.prepareTempTable(ctx, tx, changeset, columnsLiteral, flatValues, excessRows)
+		populateTempTable(ctx, tx, changeset, columnsLiteral, flatValues, excessRows)
 		defer tx.Exec(context.Background(), "DROP TABLE r")
 		flatValues = nil
 		tmplVars["rows"] = "r"
 	} else if len(flatValues) == 0 {
-		return
+		return false
 	} else {
 		sb := strings.Builder{}
 		sb.WriteString("(VALUES ")
@@ -121,6 +121,8 @@ func (w *Writer) Write(changeset *db.ChanChangeset) {
 		log.Printf("[Postgres Writer] Error running query:\n%s\n", sql.String())
 		panic(err)
 	}
+
+	return true
 }
 
 func (w *Writer) TruncateTable(table string) {
@@ -134,7 +136,7 @@ func (w *Writer) Close() {
 	w.conn.Close()
 }
 
-func (w *Writer) prepareTempTable(ctx context.Context, tx pgx.Tx, changeset *db.ChanChangeset, columnsLiteral string, params []any, extraRows [][]any) {
+func populateTempTable(ctx context.Context, tx pgx.Tx, changeset *db.ChanChangeset, columnsLiteral string, params []any, extraRows [][]any) {
 	// Create a temporary table to store the rows
 	sb := strings.Builder{}
 	sb.WriteString("CREATE TEMPORARY TABLE r (")

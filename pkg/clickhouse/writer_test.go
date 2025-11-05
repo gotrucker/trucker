@@ -118,6 +118,44 @@ func TestWrite(t *testing.T) {
 	}
 }
 
+func TestWriteZeroRows(t *testing.T) {
+	w := writerTestSetup()
+	defer w.Close()
+	w.SetupPositionTracking()
+
+	rows := make(chan [][]any, 1)
+	close(rows)
+	result := w.Write(&db.ChanChangeset{
+		Operation: db.Insert,
+		Columns: []db.Column{
+			{Name: "id", Type: db.String},
+			{Name: "name", Type: db.String},
+			{Name: "age", Type: db.Int32},
+			{Name: "type", Type: db.String},
+			{Name: "country", Type: db.String},
+		},
+		Rows: rows,
+	})
+
+	if result != false {
+		t.Error("Expected Write to return false when no rows are written")
+	}
+
+	var cnt proto.ColUInt64
+	if err := w.conn.Do(context.Background(), ch.Query{
+		Body: "SELECT count(*) AS cnt FROM trucker.v_whiskies_flat",
+		Result: proto.Results{
+			{Name: "cnt", Data: &cnt},
+		},
+	}); err != nil {
+		t.Error("Failed to query v_whiskies_flat", err)
+	}
+
+	if cnt.Row(0) != 0 {
+		t.Error("Expected 0 rows, got", cnt)
+	}
+}
+
 func writerTestSetup() *Writer {
 	helpers.PrepareClickhouseTestDb().Close()
 

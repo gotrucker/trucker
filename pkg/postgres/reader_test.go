@@ -174,6 +174,35 @@ got: %v`, expectedReadCols, result.Columns)
 	}
 }
 
+func TestReadZeroRows(t *testing.T) {
+	r := readerTestSetup(`SELECT '{{ .operation }}' op, r.id, r.name, r.age, t.name type
+FROM {{ .rows }}
+JOIN whisky_types t ON t.id = r.whisky_type_id
+WHERE false`)
+	defer r.Close()
+
+	changeset := &db.Changeset{
+		Operation: db.Insert,
+		Table:     "whiskies",
+		Columns: []db.Column{
+			{Name: "id", Type: db.Int32},
+			{Name: "name", Type: db.String},
+			{Name: "age", Type: db.Int32},
+			{Name: "whisky_type_id", Type: db.Int32},
+		},
+		Rows: [][]any{
+			{1, "Glenfiddich", 15, 4},
+		},
+	}
+
+	result := r.Read(changeset)
+
+	resultRows := <-result.Rows
+	if resultRows != nil {
+		t.Error("Expected result rows to be nil, got:", resultRows)
+	}
+}
+
 func readerTestSetup(inputSql string) *Reader {
 	helpers.PreparePostgresTestDb().Close(context.Background())
 	return NewReader(inputSql, helpers.PostgresCfg)

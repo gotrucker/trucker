@@ -138,6 +138,40 @@ func TestWrite(t *testing.T) {
 	}
 }
 
+func TestWriteZeroRows(t *testing.T) {
+	w := writerTestSetup()
+	defer w.Close()
+	w.SetupPositionTracking()
+
+	rows := make(chan [][]any, 1)
+	close(rows)
+
+	result := w.Write(
+		&db.ChanChangeset{
+			Operation: db.Insert,
+			Columns: []db.Column{
+				{Name: "name", Type: db.String},
+				{Name: "age", Type: db.Int32},
+				{Name: "whisky_type_id", Type: db.Int32},
+			},
+			Rows: rows,
+		},
+	)
+
+	if result != false {
+		t.Error("Expected Write to return false when no rows are written")
+	}
+
+	row := w.conn.QueryRow(context.Background(), "SELECT count(*) FROM whiskies")
+	var cnt int
+	row.Scan(&cnt)
+
+	// Seeds file has 4 rows, we expect none to have been added or removed
+	if cnt != 4 {
+		t.Error("Expected 4 rows, got", cnt)
+	}
+}
+
 func writerTestSetup() *Writer {
 	helpers.PreparePostgresTestDb().Close(context.Background())
 

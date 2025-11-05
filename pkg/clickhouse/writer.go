@@ -78,7 +78,7 @@ func (w *Writer) GetCurrentPosition() uint64 {
 	return lsn.Row(0)
 }
 
-func (w *Writer) Write(changeset *db.ChanChangeset) {
+func (w *Writer) Write(changeset *db.ChanChangeset) bool {
 	ctx := context.Background()
 	conn, err := w.conn.Acquire(ctx)
 	if err != nil {
@@ -86,7 +86,9 @@ func (w *Writer) Write(changeset *db.ChanChangeset) {
 	}
 	defer conn.Release()
 
-	w.prepareTempTable(ctx, conn, changeset)
+	if !populateTempTable(ctx, conn, changeset) {
+		return false
+	}
 	defer conn.Do(ctx, ch.Query{Body: "DROP TEMPORARY TABLE IF EXISTS r"})
 
 	tmplVars := map[string]string{
@@ -105,6 +107,8 @@ func (w *Writer) Write(changeset *db.ChanChangeset) {
 	if err != nil {
 		panic(err)
 	}
+
+	return true
 }
 
 func (w *Writer) TruncateTable(table string) {
@@ -118,18 +122,15 @@ func (w *Writer) Close() {
 	w.conn.Close()
 }
 
-func (w *Writer) prepareTempTable(ctx context.Context, conn *chpool.Client, changeset *db.ChanChangeset) {
-	sb := strings.Builder{}
-	sb.WriteString("CREATE TEMPORARY TABLE r (")
-	sb.WriteString(makeColumnTypesSql(changeset.Columns).String())
-	sb.WriteByte(')')
-
-	err := conn.Do(ctx, ch.Query{Body: sb.String(), Result: proto.Results{}})
-	if err != nil {
-		panic(err)
-	}
+func populateTempTable(ctx context.Context, conn *chpool.Client, changeset *db.ChanChangeset) bool {
+	tableCreated := false
 
 	for batch := range changeset.Rows {
+		if !tableCreated {
+			createTempTable(ctx, conn, changeset)
+			tableCreated = true
+		}
+
 		values := make(map[string]proto.ColInput)
 
 		for _, row := range batch {
@@ -143,10 +144,24 @@ func (w *Writer) prepareTempTable(ctx context.Context, conn *chpool.Client, chan
 			block = append(block, proto.InputColumn{Name: name, Data: col})
 		}
 
-		err = conn.Do(ctx, ch.Query{Body: "INSERT INTO r VALUES", Input: block})
+		err := conn.Do(ctx, ch.Query{Body: "INSERT INTO r VALUES", Input: block})
 		if err != nil {
 			panic(err)
 		}
+	}
+
+	return tableCreated
+}
+
+func createTempTable(ctx context.Context, conn *chpool.Client, changeset *db.ChanChangeset) {
+	sb := strings.Builder{}
+	sb.WriteString("CREATE TEMPORARY TABLE r (")
+	sb.WriteString(makeColumnTypesSql(changeset.Columns).String())
+	sb.WriteByte(')')
+
+	err := conn.Do(ctx, ch.Query{Body: sb.String(), Result: proto.Results{}})
+	if err != nil {
+		panic(err)
 	}
 }
 
