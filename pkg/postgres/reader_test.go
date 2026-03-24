@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/tonyfg/trucker/pkg/db"
 	"github.com/tonyfg/trucker/test/helpers"
 )
@@ -174,7 +176,50 @@ got: %v`, expectedReadCols, result.Columns)
 	}
 }
 
+func TestPrepareTempTablePreservesMixedCaseColumnNames(t *testing.T) {
+	r := readerTestSetup(`SELECT * FROM {{ .rows }}`)
+	defer r.Close()
+
+	conn, err := r.conn.Acquire(context.Background())
+	if err != nil {
+		t.Fatalf("failed to acquire connection: %v", err)
+	}
+	defer dropAndReleaseTempTable(t, conn)
+
+	changeset := &db.Changeset{
+		Columns: []db.Column{
+			{Name: "globalID", Type: db.String},
+			{Name: "name", Type: db.String},
+		},
+		Rows: [][]any{{"acct-1", "Toward Health"}},
+	}
+
+	r.prepareTempTable(conn, changeset, makeColumnsList(changeset.Columns).String(), changeset.Rows)
+
+	var globalID, name string
+	err = conn.QueryRow(
+		context.Background(),
+		`SELECT "globalID", name FROM r LIMIT 1`,
+	).Scan(&globalID, &name)
+	if err != nil {
+		t.Fatalf("expected quoted mixed-case columns to be queryable from temp table: %v", err)
+	}
+
+	if globalID != "acct-1" || name != "Toward Health" {
+		t.Fatalf("unexpected temp table row: globalID=%q name=%q", globalID, name)
+	}
+}
+
 func readerTestSetup(inputSql string) *Reader {
 	helpers.PreparePostgresTestDb().Close(context.Background())
 	return NewReader(inputSql, helpers.PostgresCfg)
+}
+
+func dropAndReleaseTempTable(t *testing.T, conn *pgxpool.Conn) {
+	t.Helper()
+
+	if _, err := conn.Exec(context.Background(), "DROP TABLE IF EXISTS r"); err != nil {
+		t.Fatalf("failed to drop temp table: %v", err)
+	}
+	conn.Release()
 }

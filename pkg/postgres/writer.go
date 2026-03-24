@@ -142,7 +142,7 @@ func (w *Writer) prepareTempTable(ctx context.Context, tx pgx.Tx, changeset *db.
 		if i > 0 {
 			sb.WriteByte(',')
 		}
-		sb.WriteString(fmt.Sprintf("%s %s", col.Name, dbTypeToPgType(col.Type)))
+		sb.WriteString(fmt.Sprintf(`"%s" %s`, col.Name, dbTypeToPgType(col.Type)))
 	}
 	sb.WriteByte(')')
 

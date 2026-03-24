@@ -138,6 +138,47 @@ func TestWrite(t *testing.T) {
 	}
 }
 
+func TestWriterPrepareTempTablePreservesMixedCaseColumnNames(t *testing.T) {
+	w := writerTestSetup()
+	defer w.Close()
+
+	ctx := context.Background()
+	tx, err := w.conn.Begin(ctx)
+	if err != nil {
+		t.Fatalf("failed to begin tx: %v", err)
+	}
+	defer tx.Rollback(ctx)
+
+	changeset := &db.ChanChangeset{
+		Columns: []db.Column{
+			{Name: "globalID", Type: db.String},
+			{Name: "name", Type: db.String},
+		},
+	}
+	changeset.Rows = make(chan [][]any)
+	close(changeset.Rows)
+	params := []any{"acct-1", "Toward Health"}
+
+	w.prepareTempTable(
+		ctx,
+		tx,
+		changeset,
+		makeColumnsList(changeset.Columns).String(),
+		params,
+		nil,
+	)
+
+	var globalID, name string
+	err = tx.QueryRow(ctx, `SELECT "globalID", name FROM r LIMIT 1`).Scan(&globalID, &name)
+	if err != nil {
+		t.Fatalf("expected quoted mixed-case columns to be queryable from temp table: %v", err)
+	}
+
+	if globalID != "acct-1" || name != "Toward Health" {
+		t.Fatalf("unexpected temp table row: globalID=%q name=%q", globalID, name)
+	}
+}
+
 func writerTestSetup() *Writer {
 	helpers.PreparePostgresTestDb().Close(context.Background())
 
