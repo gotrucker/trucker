@@ -18,7 +18,7 @@ FROM {{ .rows }}
 JOIN whisky_types t ON t.id = r.whisky_type_id`)
 	defer r.Close()
 
-	changeset := &db.Change{
+	changes := &db.Changes{
 		Operation: db.Insert,
 		Table:     "whiskies",
 		Columns: []db.Column{
@@ -27,13 +27,14 @@ JOIN whisky_types t ON t.id = r.whisky_type_id`)
 			{Name: "age", Type: db.Int32},
 			{Name: "whisky_type_id", Type: db.Int32},
 		},
-		Rows: [][]any{
-			{1, "Glenfiddich", 15, 4},
-			{3, "Hibiki", 17, 2},
-		},
+		Rows: make(chan [][]any),
+	}
+	changes.Rows <- [][]any{
+		{1, "Glenfiddich", 15, 4},
+		{3, "Hibiki", 17, 2},
 	}
 
-	result := r.Read(changeset)
+	result := r.Read(changes)
 
 	if result.Operation != db.Insert {
 		t.Errorf("Expected operation to be Insert, got %s", db.OperationStr(result.Operation))
@@ -107,14 +108,15 @@ WHERE table_schema = 'public'
 		cols[i] = db.Column{Name: col, Type: pgTypeToDbType(types[i])}
 	}
 
-	changeset := &db.Change{
+	changes := &db.Changes{
 		Operation: db.Insert,
 		Table:     "weird_types",
 		Columns:   cols,
-		Rows:      rowValues,
+		Rows:      make(chan [][]any),
 	}
+	changes.Rows <- rowValues
 
-	result := r.Read(changeset)
+	result := r.Read(changes)
 	resultRows := <-result.Rows
 
 	expectedReadCols := []db.Column{
@@ -181,7 +183,7 @@ JOIN whisky_types t ON t.id = r.whisky_type_id
 WHERE false`)
 	defer r.Close()
 
-	changeset := &db.Changeset{
+	changes := &db.Changes{
 		Operation: db.Insert,
 		Table:     "whiskies",
 		Columns: []db.Column{
@@ -190,12 +192,13 @@ WHERE false`)
 			{Name: "age", Type: db.Int32},
 			{Name: "whisky_type_id", Type: db.Int32},
 		},
-		Rows: [][]any{
-			{1, "Glenfiddich", 15, 4},
-		},
+		Rows: make(chan [][]any),
+	}
+	changes.Rows <- [][]any{
+		{1, "Glenfiddich", 15, 4},
 	}
 
-	result := r.Read(changeset)
+	result := r.Read(changes)
 
 	resultRows := <-result.Rows
 	if resultRows != nil {

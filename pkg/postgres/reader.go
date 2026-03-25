@@ -27,30 +27,30 @@ func NewReader(readQuery string, cfg config.Connection) *Reader {
 		panic(err)
 	}
 
-	conn := NewConnection(cfg.User, cfg.Pass, cfg.Host, cfg.Port, cfg.Ssl, cfg.Database, false)
+	conn := NewConnection(cfg.User, cfg.Pass, cfg.Host, cfg.Port, cfg.Database, cfg.Ssl, false)
 
 	return &Reader{queryTemplate: tmpl, conn: conn}
 }
 
-func (r *Reader) Read(changeset *db.Change) *db.Change {
-	rows := <-changeset.Rows
-	if len(changeset.Columns) == 0 || len(rows) == 0 {
+func (r *Reader) Read(changes *db.Changes) *db.Changes {
+	rows := <-changes.Rows
+	if len(changes.Columns) == 0 || len(rows) == 0 {
 		return nil
 	}
 
-	for rowBatch := range changeset.Rows {
+	for rowBatch := range changes.Rows {
 		rows = append(rows, rowBatch...)
 
-		if len(changeset.Columns)*len(rows) > maxPreparedStatementArgs {
+		if len(changes.Columns)*len(rows) > maxPreparedStatementArgs {
 			break
 		}
 	}
 
 	var flatValues []any
-	columnsLiteral := makeColumnsList(changeset.Columns).String()
+	columnsLiteral := makeColumnsList(changes.Columns).String()
 	tmplVars := map[string]string{
-		"operation":   db.OperationStr(changeset.Operation),
-		"input_table": changeset.Table,
+		"operation":   db.OperationStr(changes.Operation),
+		"input_table": changes.Table,
 	}
 
 	// We need to hold on to a specific connection to be able to create and
@@ -61,9 +61,9 @@ func (r *Reader) Read(changeset *db.Change) *db.Change {
 		panic(err)
 	}
 
-	if len(changeset.Columns)*len(rows) <= maxPreparedStatementArgs {
+	if len(changes.Columns)*len(rows) <= maxPreparedStatementArgs {
 		// All of the data fits in a single query using a VALUES list. Let's do it!
-		valuesList, values := makeValuesList(changeset.Columns, rows, true)
+		valuesList, values := makeValuesList(changes.Columns, rows, true)
 		flatValues = values
 		sb := strings.Builder{}
 		sb.WriteString("(VALUES ")
@@ -78,11 +78,11 @@ func (r *Reader) Read(changeset *db.Change) *db.Change {
 		// a SQL query.
 		log.Printf(
 			"[Postgres Reader] Reading changeset with more than 32k parameters for %s on table %s. Using temporary table...\n",
-			db.OperationStr(changeset.Operation),
-			changeset.Table,
+			db.OperationStr(changes.Operation),
+			changes.Table,
 		)
 		tmplVars["rows"] = "r"
-		r.prepareTempTable(conn, changeset, columnsLiteral, rows, changeset.Rows)
+		r.prepareTempTable(conn, changes, columnsLiteral, rows, changes.Rows)
 	}
 
 	sql := new(bytes.Buffer)
@@ -137,9 +137,9 @@ func (r *Reader) Read(changeset *db.Change) *db.Change {
 		}
 	}()
 
-	return &db.Change{
-		Operation: changeset.Operation,
-		Table:     changeset.Table,
+	return &db.Changes{
+		Operation: changes.Operation,
+		Table:     changes.Table,
 		Columns:   cols,
 		Rows:      rowChan,
 	}
@@ -149,7 +149,7 @@ func (r *Reader) Close() {
 	r.conn.Close()
 }
 
-func (r *Reader) prepareTempTable(conn *pgxpool.Conn, changeset *db.Change, columnsLiteral string, rows [][]any, rowChan chan [][]any) {
+func (r *Reader) prepareTempTable(conn *pgxpool.Conn, changeset *db.Changes, columnsLiteral string, rows [][]any, rowChan chan [][]any) {
 	// Create a temporary table to store the rows
 	sb := strings.Builder{}
 	sb.WriteString("CREATE TEMPORARY TABLE r (")

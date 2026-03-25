@@ -25,7 +25,7 @@ type Truck struct {
 	Writer               db.Writer
 	OutputSql            string
 	SlowQueryThresholdMs int64
-	ChangesChan          chan *db.Change
+	TransactionChan      chan db.Transaction
 	KillChan             chan any
 	DoneChan             chan ExitMsg
 }
@@ -39,7 +39,7 @@ func NewTruck(cfg config.Truck, rc *postgres.ReplicationClient, connCfgs map[str
 		InputTables:          cfg.Input.Tables,
 		Writer:               NewWriter(cfg.Input.Connection, cfg.Output.Sql, connCfgs[cfg.Output.Connection], uniqueId),
 		SlowQueryThresholdMs: cfg.SlowQueryThresholdMs,
-		ChangesChan:          make(chan *db.Change),
+		TransactionChan:      make(chan db.Transaction),
 		KillChan:             make(chan any),
 		DoneChan:             doneChan,
 	}
@@ -84,41 +84,50 @@ func (t *Truck) Start() {
 
 		for {
 			select {
-			case changeset := <-t.ChangesChan:
-				if changeset == nil {
+			case transaction, ok := <-t.TransactionChan:
+				if !ok {
 					log.Printf("[Truck %s] Changeset channel closed. Exiting...\n", t.Name)
 					return
 				}
 
+				// TODO: All of the following should be written in a single transaction, including the SetCurrentPosittion call
 				now := time.Now()
-				resultChangeset := t.Reader.Read(changeset)
-				if time.Since(now).Milliseconds() > t.SlowQueryThresholdMs {
-					log.Printf("[Truck %s] Slow input query: took %dms for %d columns x %d rows.\n", t.Name, time.Since(now).Milliseconds(), len(changeset.Columns), len(changeset.Rows))
+				for changes := range transaction.Changes {
+					if slices.Contains(t.InputTables, changes.Table) {
+						// ignore any changes in the transaction that are not on our input tables
+						continue
+					}
+
+					resultChangeset := t.Reader.Read(changes)
+					if time.Since(now).Milliseconds() > t.SlowQueryThresholdMs {
+						log.Printf("[Truck %s] Slow input query: took %dms for %d columns x %d rows.\n", t.Name, time.Since(now).Milliseconds(), len(changes.Columns), len(changes.Rows))
+					}
+
+					now = time.Now()
+					t.Writer.Write(resultChangeset)
+					if time.Since(now).Milliseconds() > t.SlowQueryThresholdMs {
+						log.Printf("[Truck %s] Slow output query: took %dms for %d columns x %d rows.\n", t.Name, time.Since(now).Milliseconds(), len(resultChangeset.Columns), len(resultChangeset.Rows))
+					}
 				}
 
-				now = time.Now()
-				t.Writer.Write(resultChangeset)
-				if time.Since(now).Milliseconds() > t.SlowQueryThresholdMs {
-					log.Printf("[Truck %s] Slow output query: took %dms for %d columns x %d rows.\n", t.Name, time.Since(now).Milliseconds(), len(resultChangeset.Columns), len(resultChangeset.Rows))
-				}
-
-				if changeset.StreamPosition != 0 {
-					t.Writer.SetCurrentPosition(changeset.StreamPosition)
+				if transaction.StreamPosition != 0 {
+					t.Writer.SetCurrentPosition(transaction.StreamPosition)
 				}
 			case <-t.KillChan:
 				log.Printf("[Truck %s] Received kill msg. Exiting...\n", t.Name)
 				t.ReplicationClient.Close()
 				t.Reader.Close()
 				t.Writer.Close()
-				close(t.ChangesChan)
+				close(t.TransactionChan)
 				return
 			}
 		}
 	}()
 }
 
-func (t *Truck) ProcessChangeset(changeset *db.Change) {
-	t.ChangesChan <- changeset
+// TODO: Rename this to ProcessTransaction
+func (t *Truck) ProcessChangeset(transaction db.Transaction) {
+	t.TransactionChan <- transaction
 }
 
 func (t *Truck) Stop() {

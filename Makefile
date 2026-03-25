@@ -18,6 +18,9 @@ dev:
 	touch .env
 	docker compose up -d --remove-orphans -t 1
 
+stop:
+	docker compose stop -t 1
+
 sh:
 	docker compose exec go ash
 

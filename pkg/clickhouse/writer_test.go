@@ -70,7 +70,7 @@ func TestWrite(t *testing.T) {
 	rows := make(chan [][]any, 1)
 	rows <- [][]any{{"1", "Green Spot", int32(10), "Single Pot Still", "Ireland"}}
 	close(rows)
-	w.Write(&db.Change{
+	w.Write(&db.Changes{
 		Operation: db.Insert,
 		Columns: []db.Column{
 			{Name: "id", Type: db.String},
@@ -125,7 +125,7 @@ func TestWriteZeroRows(t *testing.T) {
 
 	rows := make(chan [][]any, 1)
 	close(rows)
-	result := w.Write(&db.ChanChangeset{
+	result := w.Write(&db.Changes{
 		Operation: db.Insert,
 		Columns: []db.Column{
 			{Name: "id", Type: db.String},

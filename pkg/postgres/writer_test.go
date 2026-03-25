@@ -108,7 +108,7 @@ func TestWrite(t *testing.T) {
 	close(rows)
 
 	w.Write(
-		&db.Change{
+		&db.Changes{
 			Operation: db.Insert,
 			Columns: []db.Column{
 				{Name: "name", Type: db.String},
@@ -147,7 +147,7 @@ func TestWriteZeroRows(t *testing.T) {
 	close(rows)
 
 	result := w.Write(
-		&db.ChanChangeset{
+		&db.Changes{
 			Operation: db.Insert,
 			Columns: []db.Column{
 				{Name: "name", Type: db.String},

@@ -16,7 +16,7 @@ import (
 const channelSize = 3
 const batchSize = 2000000
 
-func (rc *ReplicationClient) ReadBackfillData(table string, snapshotName string, readQuery string) *db.Change {
+func (rc *ReplicationClient) ReadBackfillData(table string, snapshotName string, readQuery string) *db.Changes {
 	var schema, tblName, nullFields string
 	schemaAndTable := strings.Split(table, ".")
 	if len(schemaAndTable) < 2 {
@@ -125,7 +125,7 @@ WHERE table_schema = $1
 		}
 	}()
 
-	return &db.Change{
+	return &db.Changes{
 		Operation: db.Insert,
 		Table:     table,
 		Columns:   columns,

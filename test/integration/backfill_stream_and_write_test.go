@@ -64,7 +64,7 @@ GROUP BY id`,
 
 	for {
 		rows := <-changeset.Rows
-		if rows == nil || len(rows) == 0 {
+		if len(rows) == 0 {
 			break
 		}
 
@@ -72,7 +72,7 @@ GROUP BY id`,
 		rowChan <- rows
 		close(rowChan)
 
-		changeset := &db.Change{
+		changeset := &db.Changes{
 			Operation: db.Insert,
 			Table:     "public.whiskies",
 			Columns:   cols,
@@ -105,18 +105,18 @@ got %T %v`, expectedRows, expectedRows, rows, rows)
 	// TODO: Check that LSN moved forward
 
 	// Now let's stream Jack Daniels
-	streamChan := rc.Start(snapshotLsn, 0)
+	transactionChan := rc.Start(snapshotLsn, 0)
 	processedChangeset := false
 
 	select {
-	case transaction := <-streamChan:
-		for changeset := range transaction.Changesets {
+	case transaction := <-transactionChan:
+		for change := range transaction.Changes {
 			processedChangeset = true
-			if changeset.Operation != db.Insert {
-				t.Error("Expected insert operation, got", db.OperationStr(changeset.Operation))
+			if change.Operation != db.Insert {
+				t.Error("Expected insert operation, got", db.OperationStr(change.Operation))
 			}
 
-			result := r.Read(changeset)
+			result := r.Read(change)
 			w.Write(result)
 		}
 	case <-time.After(3 * time.Second):
@@ -130,9 +130,9 @@ got %T %v`, expectedRows, expectedRows, rows, rows)
 	// TODO: Check that LSN moved forward
 
 	rc.Close()
-	changesets := <-streamChan
-	if changesets != nil {
-		t.Error("Expected the channel to be closed, but got", changesets)
+	transaction, open := <-transactionChan
+	if open {
+		t.Error("Expected the channel to be closed, but got", transaction)
 	}
 
 	expectedColumns = []string{"id", "name", "age", "type", "country"}

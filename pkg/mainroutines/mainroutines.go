@@ -3,7 +3,6 @@ package mainroutines
 import (
 	"log"
 	"path/filepath"
-	"slices"
 
 	"github.com/jackc/pglogrepl"
 
@@ -44,17 +43,16 @@ func Start(projectPath string) (chan truck.ExitMsg, []config.Truck, map[string][
 	}
 
 	go func() {
-		backfilledTables, backfillLSNs := backfill(replicationClients, trucksByInputConnection)
-		catchup(replicationClients, trucksByInputConnection, backfilledTables, backfillLSNs)
+		backfillLSNs := backfill(replicationClients, trucksByInputConnection)
+		catchup(replicationClients, trucksByInputConnection, backfillLSNs)
 		streamChanges(trucksByInputConnection)
 	}()
 
 	return doneChan, truckCfgs, trucksByInputConnection
 }
 
-func backfill(replicationClients map[string]*postgres.ReplicationClient, trucks map[string][]*truck.Truck) (map[string][]string, map[string]uint64) {
+func backfill(replicationClients map[string]*postgres.ReplicationClient, trucks map[string][]*truck.Truck) map[string]uint64 {
 	backfillLSNs := make(map[string]uint64)
-	backfilledTables := make(map[string][]string)
 
 	for connName, rc := range replicationClients {
 		tablesToBackfill, backfillLSN, snapshotName := rc.Setup()
@@ -66,29 +64,17 @@ func backfill(replicationClients map[string]*postgres.ReplicationClient, trucks 
 		}
 
 		backfillLSNs[connName] = backfillLSN
-		backfilledTables[connName] = tablesToBackfill
 	}
 
-	return backfilledTables, backfillLSNs
+	return backfillLSNs
 }
 
-func catchup(replicationClients map[string]*postgres.ReplicationClient, trucks map[string][]*truck.Truck, skipTables map[string][]string, backfillLSNs map[string]uint64) {
+func catchup(replicationClients map[string]*postgres.ReplicationClient, trucks map[string][]*truck.Truck, backfillLSNs map[string]uint64) {
 	for connName, rc := range replicationClients {
 		var startLSN uint64
 		endLSN := backfillLSNs[connName]
 
 		for _, truck := range trucks[connName] {
-			needsCatchup := false
-			for _, table := range truck.InputTables {
-				if !slices.Contains(skipTables[connName], table) {
-					needsCatchup = true
-				}
-			}
-
-			if !needsCatchup {
-				continue
-			}
-
 			log.Printf("[Truck %s] Catching up to latest stream position...\n", truck.Name)
 
 			truckLSN := truck.Writer.GetCurrentPosition()
@@ -101,20 +87,9 @@ func catchup(replicationClients map[string]*postgres.ReplicationClient, trucks m
 
 		if startLSN > 0 && endLSN > 0 {
 			changesChan := rc.Start(startLSN, endLSN)
-			for {
-				transaction := <-changesChan
-				if transaction == nil {
-					break
-				}
-
-				for changeset := range transaction.Changesets {
-					changeset.StreamPosition = transaction.StreamPosition
-					for _, truck := range trucks[connName] {
-						if !slices.Contains(skipTables[connName], changeset.Table) &&
-							slices.Contains(truck.InputTables, changeset.Table) {
-							truck.ProcessChangeset(changeset)
-						}
-					}
+			for transaction := range changesChan {
+				for _, truck := range trucks[connName] {
+					truck.ProcessChangeset(transaction)
 				}
 
 				if transaction.StreamPosition > 0 {
@@ -151,22 +126,13 @@ func streamChanges(trucksByInputConnection map[string][]*truck.Truck) {
 		}
 
 		changesChan := rc.Start(startLSN, 0)
-		for {
-			transaction := <-changesChan
+		for transaction := range changesChan {
+			for _, truck := range trucks {
+				truck.ProcessChangeset(transaction)
+			}
 
-			if transaction != nil {
-				for changeset := range transaction.Changesets {
-					changeset.StreamPosition = transaction.StreamPosition
-					for _, truck := range trucks {
-						if slices.Contains(truck.InputTables, changeset.Table) {
-							truck.ProcessChangeset(changeset)
-						}
-					}
-				}
-
-				if transaction.StreamPosition > 0 {
-					rc.SetProcessedLSN(transaction.StreamPosition)
-				}
+			if transaction.StreamPosition > 0 {
+				rc.SetProcessedLSN(transaction.StreamPosition)
 			}
 		}
 	}

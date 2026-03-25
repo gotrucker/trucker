@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net/url"
 	"strings"
 	"time"
 
@@ -84,7 +83,7 @@ ORDER BY ordinal_position`,
 	return newTables, uint64(backfillLSN), snapshotName
 }
 
-func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) chan *db.Transaction {
+func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) chan db.Transaction {
 	if rc.running {
 		log.Fatalln("Replication is already running")
 	}
@@ -113,19 +112,15 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 	}
 	log.Println("Logical replication started on slot", rc.publicationName)
 
-	transactions := make(chan *db.Transaction)
+	transactions := make(chan db.Transaction)
 	rc.running = true
 
 	go func() {
 		log.Println("Goroutine started to read from replication stream")
-
-		typeMap := pgtype.NewMap()
-		inStream := false
-		relations := map[uint32]*pglogrepl.RelationMessageV2{}
 		clientXLogPos := startLSN
 		standbyMessageTimeout := time.Second * 10
 		nextStandbyMessageDeadline := time.Now().Add(standbyMessageTimeout)
-		var transaction *db.Transaction
+		parser := NewReplicationMessageParser()
 
 	Out:
 		for {
@@ -181,9 +176,8 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 
 			msg, ok := rawMsg.(*pgproto3.CopyData)
 			if !ok {
-				// log.Printf("Received unexpected message: %T\n", rawMsg)
 				// This is fine... Usually happens when a trigger or other plsql code sends a NOTICE.
-				// Let's not print anything to avoid log spam.
+				// Nothing to do about it...
 				continue
 			}
 
@@ -207,20 +201,11 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 					log.Fatalln("ParseXLogData failed:", err)
 				}
 
-				if transaction == nil {
-					transaction = &db.Transaction{
-						StreamPosition: uint64(xld.WALStart),
-						Changes:        make(chan *db.Change, 3),
-					}
-					transactions <- transaction
+				transaction := parser.parseReplicationMsg(xld.WALData, uint64(xld.WALStart))
+				if transaction != nil {
+					transactions <- *transaction
 				}
 
-				change, done := processV2(xld.WALData, &inStream, relations, typeMap)
-				transaction.Changes <- change
-				if done {
-					close(transaction.Changes)
-					transaction = nil
-				}
 				rc.processingLSN = xld.WALStart
 
 				if xld.WALStart > clientXLogPos {
@@ -431,30 +416,17 @@ func (rc *ReplicationClient) ResetStreamConn() {
 }
 
 func (rc *ReplicationClient) connect(replication bool) *pgx.Conn {
-	port := rc.connCfg.Port
-	if port == 0 {
-		port = 5432
-	}
+	connStr := connString(
+		rc.connCfg.User,
+		rc.connCfg.Pass,
+		rc.connCfg.Host,
+		rc.connCfg.Port,
+		rc.connCfg.Database,
+		rc.connCfg.Ssl,
+		replication,
+	)
 
-	params := make([]string, 0, 0)
-	if replication {
-		params = append(params, "replication=database")
-	}
-
-	if rc.connCfg.Ssl != "" {
-		params = append(params, fmt.Sprintf("sslmode=%s", rc.connCfg.Ssl))
-	}
-
-	connString := fmt.Sprintf(
-		"postgres://%s:%s@%s:%d/%s%s",
-		url.QueryEscape(rc.connCfg.User),
-		url.QueryEscape(rc.connCfg.Pass),
-		url.QueryEscape(rc.connCfg.Host),
-		port,
-		url.QueryEscape(rc.connCfg.Database),
-		params)
-
-	config, err := pgx.ParseConfig(connString)
+	config, err := pgx.ParseConfig(connStr)
 	if err != nil {
 		log.Fatalln("Unable to parse connection string:", err)
 	}
@@ -482,10 +454,4 @@ func (rc *ReplicationClient) query1(sql string, values ...any) pgx.Row {
 
 func (rc *ReplicationClient) exec(sql string, values ...any) {
 	rc.query(sql, values...).Close()
-}
-
-// space, single quote, comma, period, asterisk need to be escaped with \
-// https://github.com/eulerto/wal2json/blob/master/README.md#parameters
-func escapeTableName(table string) string {
-	return strings.NewReplacer(" ", `\ `, "'", `\'`, ",", `\,`, "*", `\*`).Replace(table)
 }

@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -19,7 +20,9 @@ func TestSetup(t *testing.T) {
 	defer conn.Close(context.Background())
 	defer rc.Close()
 
+	fmt.Println("0")
 	tablesToBackfill, backfillLSN, snapshotName := rc.Setup()
+	fmt.Println("1")
 	if len(tablesToBackfill) != 1 {
 		t.Error("Expected to backfill 1 table, but got", len(tablesToBackfill))
 	}
@@ -50,20 +53,20 @@ func TestStart(t *testing.T) {
 		t.Error(err)
 	}
 
-	changesChan := rc.Start(backfillLSN, 0)
+	transactionChan := rc.Start(backfillLSN, 0)
 
 	select {
-	case res := <-changesChan:
-		changesets := make([]*db.Change, 0, 1)
-		for changeset := range res.Changesets {
-			changesets = append(changesets, changeset)
+	case transaction := <-transactionChan:
+		changes := make([]*db.Changes, 0, 1)
+		for change := range transaction.Changes {
+			changes = append(changes, change)
 		}
 
-		if len(changesets) != 1 {
-			t.Error("Expected to receive 1 change, but got", len(changesets))
+		if len(changes) != 1 {
+			t.Error("Expected to receive 1 change, but got", len(changes))
 		}
 
-		change := changesets[0]
+		change := changes[0]
 		if change.Table != "public.countries" {
 			t.Errorf("Expected table to be 'public.countries', but got %s", change.Table)
 		}
@@ -98,17 +101,17 @@ func TestStart(t *testing.T) {
 	}
 
 	select {
-	case res := <-changesChan:
-		changesets := make([]*db.Change, 0, 1)
-		for changeset := range res.Changesets {
-			changesets = append(changesets, changeset)
+	case transaction := <-transactionChan:
+		changes := make([]*db.Changes, 0, 1)
+		for change := range transaction.Changes {
+			changes = append(changes, change)
 		}
 
-		if len(changesets) != 1 {
-			t.Error("Expected to receive 1 change, but got", len(changesets))
+		if len(changes) != 1 {
+			t.Error("Expected to receive 1 change, but got", len(changes))
 		}
 
-		change := changesets[0]
+		change := changes[0]
 		if change.Table != "public.countries" {
 			t.Errorf("Expected table to be 'public.countries', but got %s", change.Table)
 		}
@@ -143,17 +146,17 @@ func TestStart(t *testing.T) {
 	}
 
 	select {
-	case res := <-changesChan:
-		changesets := make([]*db.Change, 0, 1)
-		for changeset := range res.Changesets {
-			changesets = append(changesets, changeset)
+	case transaction := <-transactionChan:
+		changes := make([]*db.Changes, 0, 1)
+		for change := range transaction.Changes {
+			changes = append(changes, change)
 		}
 
-		if len(changesets) != 1 {
-			t.Error("Expected to receive 1 change, but got", len(changesets))
+		if len(changes) != 1 {
+			t.Error("Expected to receive 1 change, but got", len(changes))
 		}
 
-		change := changesets[0]
+		change := changes[0]
 		if change.Table != "public.countries" {
 			t.Errorf("Expected table to be 'public.countries', but got %s", change.Table)
 		}
@@ -196,20 +199,20 @@ VALUES (33, false, '2013-12-11', '193.137.213.0/24', '{"some": "thing"}', '2032-
 		t.Error(err)
 	}
 
-	changesChan := rc.Start(backfillLSN, 0)
+	transactionChan := rc.Start(backfillLSN, 0)
 
 	select {
-	case res := <-changesChan:
-		changesets := make([]*db.Change, 0, 1)
-		for changeset := range res.Changesets {
-			changesets = append(changesets, changeset)
+	case transaction := <-transactionChan:
+		changes := make([]*db.Changes, 0, 1)
+		for change := range transaction.Changes {
+			changes = append(changes, change)
 		}
 
-		if len(changesets) != 1 {
-			t.Error("Expected to receive 1 change, but got", len(changesets))
+		if len(changes) != 1 {
+			t.Error("Expected to receive 1 change, but got", len(changes))
 		}
 
-		change := changesets[0]
+		change := changes[0]
 		if change.Table != "public.weird_types" {
 			t.Errorf("Expected table to be 'public.weird_types', but got %s", change.Table)
 		}

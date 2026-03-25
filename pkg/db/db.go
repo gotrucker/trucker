@@ -15,7 +15,7 @@ type Column struct {
 	Type uint8
 }
 
-type Change struct {
+type Changes struct {
 	Table     string
 	Operation uint8 // Insert, Update, or Delete
 	Columns   []Column
@@ -24,11 +24,11 @@ type Change struct {
 
 type Transaction struct {
 	StreamPosition uint64
-	Changes        chan *Change
+	Changes        chan *Changes
 }
 
 type Reader interface {
-	Read(changeset *Change) *Change
+	Read(changes *Changes) *Changes
 	Close()
 }
 
@@ -36,7 +36,7 @@ type Writer interface {
 	SetupPositionTracking()
 	SetCurrentPosition(lsn uint64)
 	GetCurrentPosition() uint64
-	Write(changeset *Change) bool
+	Write(changes *Changes) bool
 	TruncateTable(table string)
 	Close()
 }
