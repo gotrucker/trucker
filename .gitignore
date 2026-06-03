@@ -28,3 +28,5 @@ go.work.sum
 
 /tmp/*
 !/tmp/.keep
+
+#**/.claude/settings.local.json

@@ -2,8 +2,6 @@ package postgres
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -20,9 +18,7 @@ func TestSetup(t *testing.T) {
 	defer conn.Close(context.Background())
 	defer rc.Close()
 
-	fmt.Println("0")
 	tablesToBackfill, backfillLSN, snapshotName := rc.Setup()
-	fmt.Println("1")
 	if len(tablesToBackfill) != 1 {
 		t.Error("Expected to backfill 1 table, but got", len(tablesToBackfill))
 	}
@@ -37,15 +33,23 @@ func TestSetup(t *testing.T) {
 	}
 }
 
+func collectRows(change *db.Changes) [][]any {
+	var rows [][]any
+	for batch := range change.Rows {
+		rows = append(rows, batch...)
+	}
+	return rows
+}
+
 func TestStart(t *testing.T) {
 	conn, rc := replicationTestSetup("public.countries")
 	defer conn.Close(context.Background())
-	defer rc.Close()
+	defer func() { rc.Close(); <-rc.WaitDone() }()
 
 	_, backfillLSN, _ := rc.Setup()
 
 	// Only Jamaica should show up in the replication stream, since everything
-	// else is from before the snapthot
+	// else is from before the snapshot
 	_, err := conn.Exec(
 		context.Background(),
 		"INSERT INTO public.countries (name) VALUES ('Jamaica')")
@@ -53,10 +57,12 @@ func TestStart(t *testing.T) {
 		t.Error(err)
 	}
 
-	transactionChan := rc.Start(backfillLSN, 0)
+	ch := make(chan db.Transaction, 10)
+	rc.Register(Subscriber{Name: "test", Tables: map[string]bool{"public.countries": true}, Ch: ch})
+	rc.Start(backfillLSN, 0)
 
 	select {
-	case transaction := <-transactionChan:
+	case transaction := <-ch:
 		changes := make([]*db.Changes, 0, 1)
 		for change := range transaction.Changes {
 			changes = append(changes, change)
@@ -85,9 +91,9 @@ func TestStart(t *testing.T) {
 			t.Errorf("Expected InsertCols to be %v but got %v", expectedInsertCols, change.Columns)
 		}
 
-		expectedInsertValues := [][]any{{json.Number("6"), "Jamaica", nil, nil}}
-		if !reflect.DeepEqual(change.Rows, expectedInsertValues) {
-			t.Errorf("Expected Values to be %v but got %v", expectedInsertValues, change.Rows)
+		expectedInsertValues := [][]any{{int32(6), "Jamaica", nil, nil}}
+		if rows := collectRows(change); !reflect.DeepEqual(rows, expectedInsertValues) {
+			t.Errorf("Expected Values to be %v but got %v", expectedInsertValues, rows)
 		}
 	case <-time.After(1000 * time.Millisecond):
 		t.Error("Reading from replication stream took too long...")
@@ -101,7 +107,7 @@ func TestStart(t *testing.T) {
 	}
 
 	select {
-	case transaction := <-transactionChan:
+	case transaction := <-ch:
 		changes := make([]*db.Changes, 0, 1)
 		for change := range transaction.Changes {
 			changes = append(changes, change)
@@ -130,9 +136,9 @@ func TestStart(t *testing.T) {
 			t.Errorf("Expected UpdateCols to be %v but got %v", expectedUpdateCols, change.Columns)
 		}
 
-		expectedUpdateValues := [][]any{{json.Number("6"), "Jameca", json.Number("6"), "Jamaica"}}
-		if !reflect.DeepEqual(change.Rows, expectedUpdateValues) {
-			t.Errorf("Expected Values to be %v but got %v", expectedUpdateValues, change.Rows)
+		expectedUpdateValues := [][]any{{int32(6), "Jameca", int32(6), "Jamaica"}}
+		if rows := collectRows(change); !reflect.DeepEqual(rows, expectedUpdateValues) {
+			t.Errorf("Expected Values to be %v but got %v", expectedUpdateValues, rows)
 		}
 	case <-time.After(1000 * time.Millisecond):
 		t.Error("Reading from replication stream took too long...")
@@ -146,7 +152,7 @@ func TestStart(t *testing.T) {
 	}
 
 	select {
-	case transaction := <-transactionChan:
+	case transaction := <-ch:
 		changes := make([]*db.Changes, 0, 1)
 		for change := range transaction.Changes {
 			changes = append(changes, change)
@@ -175,9 +181,9 @@ func TestStart(t *testing.T) {
 			t.Errorf("Expected UpdateCols to be %v but got %v", expectedDeleteCols, change.Columns)
 		}
 
-		expectedDeleteValues := [][]any{{nil, nil, json.Number("6"), "Jameca"}}
-		if !reflect.DeepEqual(change.Rows, expectedDeleteValues) {
-			t.Errorf("Expected Values to be %v but got %v", expectedDeleteValues, change.Rows)
+		expectedDeleteValues := [][]any{{nil, nil, int32(6), "Jameca"}}
+		if rows := collectRows(change); !reflect.DeepEqual(rows, expectedDeleteValues) {
+			t.Errorf("Expected Values to be %v but got %v", expectedDeleteValues, rows)
 		}
 	case <-time.After(1000 * time.Millisecond):
 		t.Error("Reading from replication stream took too long...")
@@ -187,7 +193,7 @@ func TestStart(t *testing.T) {
 func TestStartWithWeirdTypes(t *testing.T) {
 	conn, rc := replicationTestSetup("public.weird_types")
 	defer conn.Close(context.Background())
-	defer rc.Close()
+	defer func() { rc.Close(); <-rc.WaitDone() }()
 
 	_, backfillLSN, _ := rc.Setup()
 
@@ -199,10 +205,12 @@ VALUES (33, false, '2013-12-11', '193.137.213.0/24', '{"some": "thing"}', '2032-
 		t.Error(err)
 	}
 
-	transactionChan := rc.Start(backfillLSN, 0)
+	ch := make(chan db.Transaction, 10)
+	rc.Register(Subscriber{Name: "test", Tables: map[string]bool{"public.weird_types": true}, Ch: ch})
+	rc.Start(backfillLSN, 0)
 
 	select {
-	case transaction := <-transactionChan:
+	case transaction := <-ch:
 		changes := make([]*db.Changes, 0, 1)
 		for change := range transaction.Changes {
 			changes = append(changes, change)
@@ -243,18 +251,35 @@ VALUES (33, false, '2013-12-11', '193.137.213.0/24', '{"some": "thing"}', '2032-
 got: %v`, expectedInsertCols, change.Columns)
 		}
 
-		expectedInsertValues := [][]any{{
-			json.Number("33"),
-			false,
-			"2013-12-11",
-			"193.137.213.0/24",
-			`{"some": "thing"}`,
-			"2032-10-01 00:00:22",
-			`{yo,yo,ma}`,
-			nil, nil, nil, nil, nil, nil, nil,
-		}}
-		if !reflect.DeepEqual(change.Rows, expectedInsertValues) {
-			t.Errorf("Expected Values to be %v but got %v", expectedInsertValues, change.Rows)
+		rows := collectRows(change)
+		if len(rows) != 1 {
+			t.Fatalf("Expected 1 row but got %d", len(rows))
+		}
+		row := rows[0]
+		// pgtype decodes to native Go types
+		if row[0] != int64(33) {
+			t.Errorf("Expected a_number=int64(33), got %T(%v)", row[0], row[0])
+		}
+		if row[1] != false {
+			t.Errorf("Expected a_bool=false, got %T(%v)", row[1], row[1])
+		}
+		if _, ok := row[2].(time.Time); !ok {
+			t.Errorf("Expected a_date to be time.Time, got %T", row[2])
+		}
+		if _, ok := row[4].(map[string]interface{}); !ok {
+			t.Errorf("Expected a_jsonb to be map[string]interface{}, got %T", row[4])
+		}
+		if _, ok := row[5].(time.Time); !ok {
+			t.Errorf("Expected a_ts to be time.Time, got %T", row[5])
+		}
+		if _, ok := row[6].([]interface{}); !ok {
+			t.Errorf("Expected a_text_array to be []interface{}, got %T", row[6])
+		}
+		// old__ columns should all be nil for inserts
+		for i := 7; i < 14; i++ {
+			if row[i] != nil {
+				t.Errorf("Expected old__ column %d to be nil, got %v", i, row[i])
+			}
 		}
 	case <-time.After(1000 * time.Millisecond):
 		t.Error("Reading from replication stream took too long...")

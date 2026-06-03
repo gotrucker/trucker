@@ -2,6 +2,7 @@
 .EXPORT_ALL_VARIABLES:
 .ONESHELL:
 .NOTPARALLEL:
+.PHONY: dev stop sh clean test fmt build_images push_images
 
 # Export UID/GID to make dev containers run with the same UID/GID as the local
 # user
@@ -28,6 +29,12 @@ clean:
 	docker compose down --remove-orphans -v -t 1
 	docker compose rm -f -s -v
 	docker image rm -f trucker-go trucker-pg_input trucker-pg_input_replica trucker-pg_output pg-with-wal2json
+
+test:
+	docker compose exec go go test -p 1 ./...
+
+fmt:
+	docker compose exec go go fmt ./...
 
 build_images:
 	@docker buildx create --use --name=crossplat --node=crossplat && \

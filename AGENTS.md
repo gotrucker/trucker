@@ -12,11 +12,12 @@ Trucker is a SQL-based streaming ETL tool that reads from PostgreSQL replication
 
 ### Building and Testing
 - `go build` - Build the Trucker binary
-- `go test ./...` - Run unit tests (standard Go testing)
-- `go test -v ./test/system/...` - Run system/integration tests
-- `go test -v ./test/integration/...` - Run integration tests
+- `go test -p 1 ./...` - Run unit tests (standard Go testing)
+- `go test -p 1 -v ./test/system/...` - Run system/integration tests
+- `go test -p 1 -v ./test/integration/...` - Run integration tests
 
-You can and should run `go ...` commands inside the Go docker container with `docker exec go go ...`
+It's important to use `-p 1` when running `go test` to avoid conflicting data in the test DB.
+You can and should run `go ...` commands inside the Go docker container with `UID=$(id -u) GID=$(id -g) docker compose exec go go ...`.
 
 ### Docker Images
 - `make build_images` - Build Docker image for current platform
@@ -59,8 +60,7 @@ You can and should run `go ...` commands inside the Go docker container with `do
 
 ### PostgreSQL Replication Integration
 
-- Uses logical replication with `wal2json` output plugin
-- Supports both WAL2JSON v1 and pg_logical protocol v2 for large transactions
+- Uses logical replication with the `pgoutput` plugin (PostgreSQL's native binary protocol v2 with `streaming='true'` for in-progress large transactions)
 - Manages publication/subscription and replication slot lifecycle
 - Processes INSERT/UPDATE/DELETE operations with full row data when `REPLICA IDENTITY FULL`
 

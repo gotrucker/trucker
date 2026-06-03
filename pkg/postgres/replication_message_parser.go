@@ -1,159 +1,280 @@
 package postgres
 
 import (
-	// "bytes"
-	// "encoding/json"
 	"fmt"
-	// "iter"
 	"log"
-	// "slices"
-	"strings"
-
-	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/jackc/pglogrepl"
+	"github.com/jackc/pgx/v5/pgtype"
+
 	"github.com/tonyfg/trucker/pkg/db"
 )
 
-type ReplicationMessageParser struct {
-	inStream     bool
-	currentTable string
-	transaction  *db.Transaction
-	changes      *db.Changes
-	typeMap      *pgtype.Map
-	relations    map[uint32]*pglogrepl.RelationMessageV2
+type subscriberCtx struct {
+	sub  *Subscriber
+	txn  *db.Transaction
+	open *db.Changes
+	done bool // true once the subscriber's KillChan or rcDone fires
 }
 
-func NewReplicationMessageParser() *ReplicationMessageParser {
+type ReplicationMessageParser struct {
+	inStream    bool
+	currentXid  uint32
+	streamPos   uint64
+	subs        []*subscriberCtx
+	tableIndex  map[string][]*subscriberCtx
+	typeMap     *pgtype.Map
+	relations   map[uint32]*pglogrepl.RelationMessageV2
+	autoAdvance func(name string, lsn uint64)
+	rcDone      <-chan struct{}
+}
+
+func NewReplicationMessageParser(subs []Subscriber, autoAdvance func(string, uint64), rcDone <-chan struct{}) *ReplicationMessageParser {
+	ctxs := make([]*subscriberCtx, len(subs))
+	tableIndex := make(map[string][]*subscriberCtx)
+	for i := range subs {
+		sc := &subscriberCtx{sub: &subs[i]}
+		ctxs[i] = sc
+		for table := range subs[i].Tables {
+			tableIndex[table] = append(tableIndex[table], sc)
+		}
+	}
 	return &ReplicationMessageParser{
-		inStream:  false,
-		typeMap:   pgtype.NewMap(),
-		relations: map[uint32]*pglogrepl.RelationMessageV2{},
+		subs:        ctxs,
+		tableIndex:  tableIndex,
+		typeMap:     pgtype.NewMap(),
+		relations:   make(map[uint32]*pglogrepl.RelationMessageV2),
+		autoAdvance: autoAdvance,
+		rcDone:      rcDone,
 	}
 }
 
-func (p *ReplicationMessageParser) parseReplicationMsg(walData []byte, streamPosition uint64) *db.Transaction {
+func (p *ReplicationMessageParser) parseReplicationMsg(walData []byte, streamPosition uint64) {
 	logicalMsg, err := pglogrepl.ParseV2(walData, p.inStream)
 	if err != nil {
 		log.Fatalf("Error parsing logical replication message: %s", err)
 	}
-	log.Printf("Logical replication message: %T\n", logicalMsg)
-
-	switch logicalMsg := logicalMsg.(type) {
-	case *pglogrepl.RelationMessageV2:
-		log.Printf("RelationMessageV2: %s.%s\n", logicalMsg.Namespace, logicalMsg.RelationName)
-		p.relations[logicalMsg.RelationID] = logicalMsg
-		p.currentTable = fmt.Sprintf("%s.%s", logicalMsg.Namespace, logicalMsg.RelationName)
-
-	case *pglogrepl.BeginMessage, *pglogrepl.StreamStartMessageV2:
-		if p.inStream {
-			log.Fatal("Warning: received BEGIN/STREAM_START while already in a stream!")
-		}
-		p.inStream = true
-
-		if p.transaction == nil {
-			p.transaction = &db.Transaction{
-				StreamPosition: streamPosition,
-				Changes:        make(chan *db.Changes, 128),
-			}
-			return p.transaction
-		}
-
-	case *pglogrepl.CommitMessage, *pglogrepl.StreamCommitMessageV2:
-		if p.changes != nil {
-			close(p.changes.Rows)
-			p.transaction.Changes <- p.changes
-			p.changes = nil
-		}
-
-		close(p.transaction.Changes)
-		p.transaction = nil
-		p.inStream = false
-
-	case *pglogrepl.InsertMessageV2:
-		rel, ok := p.relations[logicalMsg.RelationID]
-		if !ok {
-			log.Fatalf("unknown relation ID %d", logicalMsg.RelationID)
-		}
-		values := map[string]any{}
-		for idx, col := range logicalMsg.Tuple.Columns {
-			colName := rel.Columns[idx].Name
-			switch col.DataType {
-			case 'n': // null
-				values[colName] = nil
-			case 'u': // unchanged toast
-			// This TOAST value was not changed. TOAST values are not stored in the tuple, and logical replication doesn't want to spend a disk read to fetch its value for you.
-			case 't': //text
-				val, err := decodeTextColumnData(typeMap, col.Data, rel.Columns[idx].DataType)
-				if err != nil {
-					log.Fatalln("error decoding column data:", err)
-				}
-				values[colName] = val
-			}
-		}
-		log.Printf("insert for xid %d\n", logicalMsg.Xid)
-		log.Printf("INSERT INTO %s.%s: %v", rel.Namespace, rel.RelationName, values)
-	// TODO CONA ESTAS AQUI: é preciso devolver estes values no formato que a gente definiu como return value.
-
-	case *pglogrepl.UpdateMessageV2:
-		// ...
-		rel, ok := p.relations[logicalMsg.RelationID]
-		if !ok {
-			log.Fatalf("unknown relation ID %d", logicalMsg.RelationID)
-		}
-		values := map[string]interface{}{}
-		for idx, col := range logicalMsg.NewTuple.Columns {
-			colName := rel.Columns[idx].Name
-			switch col.DataType {
-			case 'n': // null
-				values[colName] = nil
-			case 'u': // unchanged toast
-			// This TOAST value was not changed. TOAST values are not stored in the tuple, and logical replication doesn't want to spend a disk read to fetch its value for you.
-			case 't': //text
-				val, err := decodeTextColumnData(typeMap, col.Data, rel.Columns[idx].DataType)
-				if err != nil {
-					log.Fatalln("error decoding column data:", err)
-				}
-				values[colName] = val
-			}
-		}
-		for idx, col := range logicalMsg.OldTuple.Columns {
-			colName := rel.Columns[idx].Name
-			switch col.DataType {
-			case 'n': // null
-				values[colName] = nil
-			case 'u': // unchanged toast
-			// This TOAST value was not changed. TOAST values are not stored in the tuple, and logical replication doesn't want to spend a disk read to fetch its value for you.
-			case 't': //text
-				val, err := decodeTextColumnData(typeMap, col.Data, rel.Columns[idx].DataType)
-				if err != nil {
-					log.Fatalln("error decoding column data:", err)
-				}
-				values[fmt.Sprintf("old_%s", colName)] = val
-			}
-		}
-		log.Printf("update for xid %d\n", logicalMsg.Xid)
-		log.Printf("UPDATE %s.%s: %v", rel.Namespace, rel.RelationName, values)
-	case *pglogrepl.DeleteMessageV2:
-		// logicalMsg.OldTuple.Columns
-		log.Printf("delete for xid %d\n", logicalMsg.Xid)
-	// ...
-	case *pglogrepl.TruncateMessageV2:
-		log.Printf("truncate for xid %d\n", logicalMsg.Xid)
-	// ...
-
-	case *pglogrepl.StreamStopMessageV2:
-		*inStream = false
-		log.Printf("Stream stop message")
-	case *pglogrepl.StreamAbortMessageV2:
-		log.Printf("Stream abort message: xid %d", logicalMsg.Xid)
-	}
-
-	return nil, true // CONA apaga isto
+	p.processMsg(logicalMsg, streamPosition)
 }
 
-func (p *ReplicationMessageParser) parseColumn(idx int, col *pglogrepl.TupleDataColumn) {
+func (p *ReplicationMessageParser) processMsg(msg pglogrepl.Message, streamPosition uint64) {
+	switch logicalMsg := msg.(type) {
+	case *pglogrepl.RelationMessageV2:
+		p.relations[logicalMsg.RelationID] = logicalMsg
 
+	case *pglogrepl.BeginMessage:
+		p.streamPos = streamPosition
+
+	case *pglogrepl.StreamStartMessageV2:
+		if p.inStream {
+			// streaming='true' serializes xids; a different xid here is unsupported
+			if logicalMsg.Xid != p.currentXid {
+				log.Fatalf("[parser] STREAM_START for xid %d while streaming xid %d — concurrent streaming requires streaming='parallel' (not supported)", logicalMsg.Xid, p.currentXid)
+			}
+			// same xid resuming after StreamStop — state is intact
+		} else {
+			p.inStream = true
+			p.currentXid = logicalMsg.Xid
+			p.streamPos = streamPosition
+		}
+
+	case *pglogrepl.InsertMessageV2:
+		rel := p.requireRelation(logicalMsg.RelationID)
+		tableName := fmt.Sprintf("%s.%s", rel.Namespace, rel.RelationName)
+		cols := changesetCols(p.columnsFromRelation(rel))
+		newRow := p.decodeTuple(logicalMsg.Tuple, rel)
+		oldRow := make([]any, len(rel.Columns))
+		p.routeRow(tableName, db.Insert, cols, append(newRow, oldRow...))
+
+	case *pglogrepl.UpdateMessageV2:
+		rel := p.requireRelation(logicalMsg.RelationID)
+		tableName := fmt.Sprintf("%s.%s", rel.Namespace, rel.RelationName)
+		cols := changesetCols(p.columnsFromRelation(rel))
+		newRow := p.decodeTuple(logicalMsg.NewTuple, rel)
+		oldRow := p.decodeTuple(logicalMsg.OldTuple, rel)
+		p.routeRow(tableName, db.Update, cols, append(newRow, oldRow...))
+
+	case *pglogrepl.DeleteMessageV2:
+		rel := p.requireRelation(logicalMsg.RelationID)
+		tableName := fmt.Sprintf("%s.%s", rel.Namespace, rel.RelationName)
+		cols := changesetCols(p.columnsFromRelation(rel))
+		newRow := make([]any, len(rel.Columns))
+		oldRow := p.decodeTuple(logicalMsg.OldTuple, rel)
+		p.routeRow(tableName, db.Delete, cols, append(newRow, oldRow...))
+
+	case *pglogrepl.CommitMessage:
+		p.commitAll(streamPosition)
+
+	case *pglogrepl.StreamCommitMessageV2:
+		p.commitAll(streamPosition)
+		p.inStream = false
+
+	case *pglogrepl.StreamStopMessageV2:
+		p.inStream = false
+		for _, sc := range p.subs {
+			if sc.open != nil {
+				close(sc.open.Rows)
+				sc.open = nil
+			}
+		}
+
+	case *pglogrepl.StreamAbortMessageV2:
+		for _, sc := range p.subs {
+			if sc.open != nil {
+				close(sc.open.Rows)
+				sc.open = nil
+			}
+			if sc.txn != nil {
+				close(sc.txn.Changes)
+				sc.txn = nil
+			}
+		}
+		p.inStream = false
+		p.currentXid = 0
+
+	case *pglogrepl.TruncateMessageV2:
+		log.Printf("[parser] TRUNCATE not yet supported (xid %d)\n", logicalMsg.Xid)
+	}
+}
+
+func (p *ReplicationMessageParser) commitAll(commitLSN uint64) {
+	for _, sc := range p.subs {
+		if sc.open != nil {
+			close(sc.open.Rows)
+			sc.open = nil
+		}
+		if sc.txn != nil {
+			close(sc.txn.Changes)
+			sc.txn = nil
+		} else {
+			// subscriber had no rows in this xid — advance its ack without involving the truck
+			p.autoAdvance(sc.sub.Name, commitLSN)
+		}
+	}
+	p.currentXid = 0
+	p.streamPos = 0
+}
+
+func (p *ReplicationMessageParser) routeRow(tableName string, op uint8, cols []db.Column, row []any) {
+	targets := p.tableIndex[tableName]
+	if len(targets) == 0 {
+		return
+	}
+	for _, sc := range targets {
+		if sc.done {
+			continue
+		}
+		if !p.ensureTxn(sc) {
+			continue
+		}
+		p.ensureChanges(sc, tableName, op, cols)
+		sc.open.Rows <- [][]any{row}
+	}
+}
+
+// ensureTxn lazily creates a transaction for the subscriber and sends it on the subscriber's channel.
+// Returns false if the subscriber's done channel fired (truck shutting down).
+func (p *ReplicationMessageParser) ensureTxn(sc *subscriberCtx) bool {
+	if sc.txn != nil {
+		return true
+	}
+	txn := &db.Transaction{
+		StreamPosition: p.streamPos,
+		Changes:        make(chan *db.Changes, 128),
+	}
+	select {
+	case sc.sub.Ch <- *txn:
+		sc.txn = txn
+		return true
+	case <-sc.sub.Done: // nil channel: never selected — safe for subscribers without a Done channel
+		sc.done = true
+		return false
+	case <-p.rcDone:
+		sc.done = true
+		return false
+	}
+}
+
+func (p *ReplicationMessageParser) ensureChanges(sc *subscriberCtx, tableName string, op uint8, cols []db.Column) {
+	if sc.open != nil && sc.open.Table == tableName && sc.open.Operation == op {
+		return
+	}
+	if sc.open != nil {
+		close(sc.open.Rows)
+	}
+	sc.open = &db.Changes{
+		Table:     tableName,
+		Operation: op,
+		Columns:   cols,
+		Rows:      make(chan [][]any, 3),
+	}
+	sc.txn.Changes <- sc.open
+}
+
+// flushAll closes all in-flight Changes and Transaction channels so consumers unblock.
+// Does NOT close subscriber (Ch) channels — call closeSubscribers for permanent shutdown.
+func (p *ReplicationMessageParser) flushAll() {
+	for _, sc := range p.subs {
+		if sc.open != nil {
+			close(sc.open.Rows)
+			sc.open = nil
+		}
+		if sc.txn != nil {
+			close(sc.txn.Changes)
+			sc.txn = nil
+		}
+	}
+}
+
+// closeSubscribers closes each subscriber's transaction channel so truck goroutines exit cleanly.
+// Call only on permanent RC shutdown (not between catchup and stream phases).
+func (p *ReplicationMessageParser) closeSubscribers() {
+	for _, sc := range p.subs {
+		if !sc.done {
+			close(sc.sub.Ch)
+		}
+	}
+}
+
+func (p *ReplicationMessageParser) requireRelation(id uint32) *pglogrepl.RelationMessageV2 {
+	rel, ok := p.relations[id]
+	if !ok {
+		log.Fatalf("unknown relation ID %d", id)
+	}
+	return rel
+}
+
+func (p *ReplicationMessageParser) columnsFromRelation(rel *pglogrepl.RelationMessageV2) []db.Column {
+	cols := make([]db.Column, len(rel.Columns))
+	for i, col := range rel.Columns {
+		cols[i] = db.Column{
+			Name: col.Name,
+			Type: oidToDbType(col.DataType),
+		}
+	}
+	return cols
+}
+
+func (p *ReplicationMessageParser) decodeTuple(tuple *pglogrepl.TupleData, rel *pglogrepl.RelationMessageV2) []any {
+	row := make([]any, len(rel.Columns))
+	if tuple == nil {
+		return row
+	}
+	for idx, col := range tuple.Columns {
+		switch col.DataType {
+		case 'n':
+			row[idx] = nil
+		case 'u':
+			row[idx] = nil
+		case 't':
+			val, err := decodeTextColumnData(p.typeMap, col.Data, rel.Columns[idx].DataType)
+			if err != nil {
+				log.Fatalln("error decoding column data:", err)
+			}
+			row[idx] = val
+		}
+	}
+	return row
 }
 
 func decodeTextColumnData(mi *pgtype.Map, data []byte, dataType uint32) (any, error) {

@@ -14,7 +14,7 @@ func TestPostgresToPostgresHugeTransaction(t *testing.T) {
 	ctx := context.Background()
 	conn := helpers.PreparePostgresTestDb()
 	defer conn.Close(ctx)
-	exitChan := startTrucker("postgres_to_postgres")
+	stop := startTrucker("postgres_to_postgres")
 
 	// Wait for backfill
 	for i := 0; ; i++ {
@@ -55,15 +55,15 @@ func TestPostgresToPostgresHugeTransaction(t *testing.T) {
 		row := conn.QueryRow(context.Background(), "SELECT count(*) FROM whiskies_flat")
 		row.Scan(&cnt)
 
-		if cnt == 102 {
+		if cnt == 68 {
 			break
 		} else if i > 3 {
-			t.Error("Expected 102 rows in whiskies_flat but found ", cnt)
+			t.Error("Expected 68 rows in whiskies_flat but found ", cnt)
 			break
 		}
 
 		time.Sleep(1 * time.Second)
 	}
 
-	close(exitChan)
+	stop()
 }

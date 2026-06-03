@@ -15,7 +15,7 @@ func main() {
 	log.Printf("Trucker version %s. Firing up the engine!\n", version)
 	sigChan := trapSignals()
 	projectPath := projectPathFromArgsOrCwd()
-	doneChan, truckCfgs, trucksByInputConnection := mainroutines.Start(projectPath)
+	doneChan, truckCfgs, trucksByInputConnection, _ := mainroutines.Start(projectPath)
 
 	if len(truckCfgs) > 0 {
 	outerLoop:

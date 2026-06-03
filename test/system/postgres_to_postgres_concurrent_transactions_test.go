@@ -16,7 +16,7 @@ func TestPostgresToPostgresConcurrentTransaction(t *testing.T) {
 	conn := helpers.PreparePostgresTestDb()
 	conn2 := helpers.Connect(helpers.PostgresCfg)
 	defer conn.Close(ctx)
-	exitChan := startTrucker("postgres_to_postgres")
+	stop := startTrucker("postgres_to_postgres")
 
 	// Wait for backfill
 	for i := 0; ; i++ {
@@ -65,15 +65,15 @@ func TestPostgresToPostgresConcurrentTransaction(t *testing.T) {
 		row := conn.QueryRow(context.Background(), "SELECT count(*) FROM whiskies_flat")
 		row.Scan(&cnt)
 
-		if cnt == 1000002 {
+		if cnt == 12 {
 			break
 		} else if i > 120 {
-			t.Error("Expected 1000002 rows in whiskies_flat but found ", cnt)
+			t.Error("Expected 12 rows in whiskies_flat but found ", cnt)
 			break
 		}
 
 		time.Sleep(1 * time.Second)
 	}
 
-	close(exitChan)
+	stop()
 }

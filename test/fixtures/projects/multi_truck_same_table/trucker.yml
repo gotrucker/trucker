@@ -1,0 +1,8 @@
+connections:
+- name: pg_input_conn
+  adapter: postgres
+  host: {{ or .PG_HOST "pg_input" }}
+  database: trucker
+  user: trucker
+  pass: pgpass
+  ssl: disable

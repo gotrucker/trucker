@@ -105,7 +105,13 @@ got %T %v`, expectedRows, expectedRows, rows, rows)
 	// TODO: Check that LSN moved forward
 
 	// Now let's stream Jack Daniels
-	transactionChan := rc.Start(snapshotLsn, 0)
+	transactionChan := make(chan db.Transaction, 10)
+	rc.Register(postgres.Subscriber{
+		Name:   "test",
+		Tables: map[string]bool{"public.whiskies": true},
+		Ch:     transactionChan,
+	})
+	rc.Start(snapshotLsn, 0)
 	processedChangeset := false
 
 	select {
@@ -130,9 +136,10 @@ got %T %v`, expectedRows, expectedRows, rows, rows)
 	// TODO: Check that LSN moved forward
 
 	rc.Close()
-	transaction, open := <-transactionChan
+	<-rc.WaitDone() // wait for the RC goroutine to flush and close subscriber channels
+	_, open := <-transactionChan
 	if open {
-		t.Error("Expected the channel to be closed, but got", transaction)
+		t.Error("Expected the transaction channel to be closed after rc.Close()")
 	}
 
 	expectedColumns = []string{"id", "name", "age", "type", "country"}

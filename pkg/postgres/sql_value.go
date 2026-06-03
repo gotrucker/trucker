@@ -1,37 +1,14 @@
 package postgres
 
 import (
-	// "bytes"
-	// "encoding/json"
 	"fmt"
-	// "iter"
 	"log"
-	// "slices"
 	"strings"
 
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/jackc/pglogrepl"
 	"github.com/tonyfg/trucker/pkg/db"
 )
-
-type sqlValue string
-
-type WalData struct {
-	Changes []WalChange `json:"change"`
-}
-
-type WalChange struct {
-	Kind         string   `json:"kind"` // insert, update, delete
-	Schema       string   `json:"schema"`
-	Table        string   `json:"table"`
-	ColumnNames  []string `json:"columnnames"`
-	ColumnValues []any    `json:"columnvalues"`
-	OldKeys      struct {
-		KeyNames  []string `json:"keynames"`
-		KeyValues []any    `json:"keyvalues"`
-	} `json:"oldkeys"`
-}
 
 const maxPreparedStatementArgs = 32767
 

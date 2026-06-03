@@ -27,12 +27,13 @@ JOIN whisky_types t ON t.id = r.whisky_type_id`)
 			{Name: "age", Type: db.Int32},
 			{Name: "whisky_type_id", Type: db.Int32},
 		},
-		Rows: make(chan [][]any),
+		Rows: make(chan [][]any, 1),
 	}
 	changes.Rows <- [][]any{
 		{1, "Glenfiddich", 15, 4},
 		{3, "Hibiki", 17, 2},
 	}
+	close(changes.Rows)
 
 	result := r.Read(changes)
 
@@ -112,9 +113,10 @@ WHERE table_schema = 'public'
 		Operation: db.Insert,
 		Table:     "weird_types",
 		Columns:   cols,
-		Rows:      make(chan [][]any),
+		Rows:      make(chan [][]any, 1),
 	}
 	changes.Rows <- rowValues
+	close(changes.Rows)
 
 	result := r.Read(changes)
 	resultRows := <-result.Rows
@@ -192,11 +194,12 @@ WHERE false`)
 			{Name: "age", Type: db.Int32},
 			{Name: "whisky_type_id", Type: db.Int32},
 		},
-		Rows: make(chan [][]any),
+		Rows: make(chan [][]any, 1),
 	}
 	changes.Rows <- [][]any{
 		{1, "Glenfiddich", 15, 4},
 	}
+	close(changes.Rows)
 
 	result := r.Read(changes)
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jackc/pglogrepl"
@@ -12,41 +13,106 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgproto3"
 
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tonyfg/trucker/pkg/config"
 	"github.com/tonyfg/trucker/pkg/db"
 )
 
+// Subscriber represents one truck that wants to receive transactions from a replication stream.
+type Subscriber struct {
+	Name     string
+	Tables   map[string]bool
+	Ch       chan db.Transaction
+	StartLSN uint64    // initial LSN seeded into the per-truck ack map
+	Done     <-chan any // closed when the truck is shutting down; nil means ignored
+}
+
 type ReplicationClient struct {
-	publicationName  string
-	tables           []string
-	connCfg          config.Connection
-	conn             *pgx.Conn
-	streamConn       *pgx.Conn
-	processingLSN    pglogrepl.LSN
-	lastProcessedLSN pglogrepl.LSN
-	running          bool
-	done             chan bool
-	columnsCache     map[string][]db.Column
+	publicationName string
+	tables          []string
+	connCfg         config.Connection
+	conn            *pgx.Conn
+	streamConn      *pgx.Conn
+	running         bool
+	done            chan struct{}
+	doneChan        chan struct{}
+	columnsCache    map[string][]db.Column
+
+	mu          sync.Mutex
+	truckLSNs   map[string]uint64
+	minTruckLSN pglogrepl.LSN
+	subscribers []Subscriber
 }
 
 func NewReplicationClient(tables []string, connCfg config.Connection, uniqueId string) *ReplicationClient {
+	preClosed := make(chan struct{})
+	close(preClosed)
 	return &ReplicationClient{
 		publicationName: fmt.Sprintf("trucker_%s%s", connCfg.Database, uniqueId),
 		tables:          tables,
 		connCfg:         connCfg,
 		running:         false,
-		done:            make(chan bool, 1),
+		done:            make(chan struct{}),
+		doneChan:        preClosed,
 		columnsCache:    make(map[string][]db.Column),
+		truckLSNs:       make(map[string]uint64),
+		subscribers:     make([]Subscriber, 0),
 	}
 }
 
+// Register adds a subscriber (truck) that will receive transactions from this replication stream.
+// Must be called before Start.
+func (rc *ReplicationClient) Register(sub Subscriber) {
+	rc.subscribers = append(rc.subscribers, sub)
+	rc.mu.Lock()
+	rc.truckLSNs[sub.Name] = sub.StartLSN
+	rc.recomputeMinLSN()
+	rc.mu.Unlock()
+}
+
+// AckLSN is called by a truck after it has durably written up to lsn.
+func (rc *ReplicationClient) AckLSN(name string, lsn uint64) {
+	rc.mu.Lock()
+	if lsn > rc.truckLSNs[name] {
+		rc.truckLSNs[name] = lsn
+		rc.recomputeMinLSN()
+	}
+	rc.mu.Unlock()
+}
+
+// AutoAdvance is called by the parser for subscribers that had no rows in a committed xid.
+// It advances the in-memory ack without the truck writing anything durably.
+func (rc *ReplicationClient) AutoAdvance(name string, lsn uint64) {
+	rc.mu.Lock()
+	if lsn > rc.truckLSNs[name] {
+		rc.truckLSNs[name] = lsn
+		rc.recomputeMinLSN()
+	}
+	rc.mu.Unlock()
+}
+
+// MinTruckLSN returns the minimum durably-acked LSN across all registered trucks.
+func (rc *ReplicationClient) MinTruckLSN() uint64 {
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
+	return uint64(rc.minTruckLSN)
+}
+
+func (rc *ReplicationClient) recomputeMinLSN() {
+	if len(rc.truckLSNs) == 0 {
+		return
+	}
+	var min uint64 = ^uint64(0)
+	for _, v := range rc.truckLSNs {
+		if v < min {
+			min = v
+		}
+	}
+	rc.minTruckLSN = pglogrepl.LSN(min)
+}
+
 func (rc *ReplicationClient) Setup() ([]string, uint64, string) {
-	rc.conn = rc.connect(false) // TODO: check that this connection gets closed once we no longer need it
+	rc.conn = rc.connect(false)
 	rc.streamConn = rc.connect(true)
-	// we need to keep the connection open so that the other connection can use
-	// the repliaction slot snapshot for backfills
-	// defer client.streamConn.Close(context.Background())
 
 	for _, table := range rc.tables {
 		rc.columnsCache[table] = make([]db.Column, 0, 1)
@@ -83,9 +149,17 @@ ORDER BY ordinal_position`,
 	return newTables, uint64(backfillLSN), snapshotName
 }
 
-func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) chan db.Transaction {
+// Start begins streaming replication from startPosition. If endPosition is non-zero, the stream
+// stops when startPosition >= endPosition. Subscribers receive transactions directly via their
+// registered channels. Call WaitDone to block until the stream goroutine exits.
+func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) {
 	if rc.running {
 		log.Fatalln("Replication is already running")
+	}
+	select {
+	case <-rc.done:
+		return // already closed; skip starting a goroutine that would immediately exit
+	default:
 	}
 
 	startLSN := pglogrepl.LSN(startPosition)
@@ -112,38 +186,37 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 	}
 	log.Println("Logical replication started on slot", rc.publicationName)
 
-	transactions := make(chan db.Transaction)
 	rc.running = true
+	rc.doneChan = make(chan struct{})
 
 	go func() {
-		log.Println("Goroutine started to read from replication stream")
+		parser := NewReplicationMessageParser(rc.subscribers, rc.AutoAdvance, rc.done)
+		permanentShutdown := true // false when we exit via natural endLSN
+		defer func() {
+			parser.flushAll()
+			if permanentShutdown {
+				parser.closeSubscribers()
+				rc.streamConn.Close(context.Background())
+			}
+			close(rc.doneChan)
+			rc.running = false
+		}()
+
 		clientXLogPos := startLSN
 		standbyMessageTimeout := time.Second * 10
 		nextStandbyMessageDeadline := time.Now().Add(standbyMessageTimeout)
-		parser := NewReplicationMessageParser()
 
 	Out:
 		for {
 			select {
 			case <-rc.done:
 				log.Println("Received done signal. Stopping replication...")
-				rc.streamConn.Close(context.Background())
 				break Out
 			default:
-				// keep running
 			}
 
 			if time.Now().After(nextStandbyMessageDeadline) {
-				var confirmLSN pglogrepl.LSN
-
-				if rc.processingLSN == rc.lastProcessedLSN && rc.processingLSN > 0 {
-					// we're up to date so we can move the replication slot forward freely
-					confirmLSN = clientXLogPos
-				} else {
-					// we still haven't finished writing some stuff, so let's move the replication slot only up to the latest confirmed write
-					confirmLSN = rc.lastProcessedLSN
-				}
-
+				confirmLSN := rc.confirmLSN(clientXLogPos)
 				err = pglogrepl.SendStandbyStatusUpdate(
 					context.Background(),
 					conn,
@@ -159,11 +232,12 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 			rawMsg, err := conn.ReceiveMessage(ctx)
 			cancel()
 			if err != nil {
-				if !rc.running {
-					log.Println("No longer running. Stopping replication...")
+				select {
+				case <-rc.done:
+					log.Println("Replication stopping...")
 					break Out
+				default:
 				}
-
 				if pgconn.Timeout(err) {
 					continue
 				}
@@ -176,8 +250,6 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 
 			msg, ok := rawMsg.(*pgproto3.CopyData)
 			if !ok {
-				// This is fine... Usually happens when a trigger or other plsql code sends a NOTICE.
-				// Nothing to do about it...
 				continue
 			}
 
@@ -187,7 +259,6 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 				if err != nil {
 					log.Fatalln("ParsePrimaryKeepaliveMessage failed:", err)
 				}
-				// log.Println("Primary Keepalive Message =>", "ServerWALEnd:", pkm.ServerWALEnd, "ServerTime:", pkm.ServerTime, "ReplyRequested:", pkm.ReplyRequested)
 				if pkm.ServerWALEnd > clientXLogPos {
 					clientXLogPos = pkm.ServerWALEnd
 				}
@@ -201,12 +272,7 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 					log.Fatalln("ParseXLogData failed:", err)
 				}
 
-				transaction := parser.parseReplicationMsg(xld.WALData, uint64(xld.WALStart))
-				if transaction != nil {
-					transactions <- *transaction
-				}
-
-				rc.processingLSN = xld.WALStart
+				parser.parseReplicationMsg(xld.WALData, uint64(xld.WALStart))
 
 				if xld.WALStart > clientXLogPos {
 					clientXLogPos = xld.WALStart
@@ -214,25 +280,32 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) cha
 
 				if endLSN != 0 && xld.WALStart >= endLSN {
 					log.Println("Reached end LSN. Stopping replication...")
-					rc.running = false
+					permanentShutdown = false
 					rc.ResetStreamConn()
-					close(transactions)
 					return
 				}
 			}
 		}
-
-		log.Println("Replication stream exiting...")
-		rc.streamConn.Close(context.Background())
-		close(transactions)
-		rc.Close()
 	}()
-
-	return transactions
 }
 
-func (rc *ReplicationClient) SetProcessedLSN(lsn uint64) {
-	rc.lastProcessedLSN = pglogrepl.LSN(lsn)
+// WaitDone returns a channel that is closed when the current streaming goroutine exits.
+func (rc *ReplicationClient) WaitDone() <-chan struct{} {
+	return rc.doneChan
+}
+
+func (rc *ReplicationClient) confirmLSN(clientXLogPos pglogrepl.LSN) pglogrepl.LSN {
+	rc.mu.Lock()
+	min := rc.minTruckLSN
+	rc.mu.Unlock()
+
+	if len(rc.subscribers) == 0 || min == 0 {
+		return clientXLogPos
+	}
+	if min > clientXLogPos {
+		return clientXLogPos
+	}
+	return min
 }
 
 func (rc *ReplicationClient) Close() {
@@ -241,10 +314,12 @@ func (rc *ReplicationClient) Close() {
 	default:
 		close(rc.done)
 	}
-
-	rc.running = false
-	rc.streamConn.Close(context.Background())
-	rc.conn.Close(context.Background())
+	if rc.conn != nil {
+		rc.conn.Close(context.Background())
+	}
+	if rc.streamConn != nil {
+		rc.streamConn.Close(context.Background())
+	}
 }
 
 func (rc *ReplicationClient) setupPublication() []string {

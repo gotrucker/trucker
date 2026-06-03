@@ -42,8 +42,8 @@ func TestPostgresToClickhouse(t *testing.T) {
 		return lsn.Row(0)
 	}
 
-	exitChan := startTrucker("postgres_to_clickhouse")
-	defer close(exitChan)
+	stop := startTrucker("postgres_to_clickhouse")
+	defer stop()
 
 	// Test backfill
 	for i := 0; ; i++ {
@@ -157,8 +157,8 @@ func TestPostgresToClickhouseLarge(t *testing.T) {
 		t.Error("Couldn't insert 15k rows... ", err)
 	}
 
-	exitChan := startTrucker("postgres_to_clickhouse")
-	defer close(exitChan)
+	stop := startTrucker("postgres_to_clickhouse")
+	defer stop()
 
 	// Test backfill
 	for i := 0; ; i++ {

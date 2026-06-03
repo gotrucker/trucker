@@ -11,7 +11,7 @@ import (
 	"github.com/tonyfg/trucker/pkg/truck"
 )
 
-func Start(projectPath string) (chan truck.ExitMsg, []config.Truck, map[string][]*truck.Truck) {
+func Start(projectPath string) (chan truck.ExitMsg, []config.Truck, map[string][]*truck.Truck, map[string]*postgres.ReplicationClient) {
 	ymlPath := filepath.Join(projectPath, "trucker.yml")
 	cfg := config.Load(ymlPath)
 	truckCfgs := config.LoadTrucks(projectPath, cfg)
@@ -38,17 +38,46 @@ func Start(projectPath string) (chan truck.ExitMsg, []config.Truck, map[string][
 
 	trucksByInputConnection := make(map[string][]*truck.Truck)
 	for _, truckCfg := range truckCfgs {
-		truck := truck.NewTruck(truckCfg, replicationClients[truckCfg.Input.Connection], cfg.Connections, doneChan, cfg.UniqueId)
-		trucksByInputConnection[truckCfg.Input.Connection] = append(trucksByInputConnection[truckCfg.Input.Connection], &truck)
+		t := truck.NewTruck(truckCfg, replicationClients[truckCfg.Input.Connection], cfg.Connections, doneChan, cfg.UniqueId)
+		trucksByInputConnection[truckCfg.Input.Connection] = append(trucksByInputConnection[truckCfg.Input.Connection], &t)
 	}
 
 	go func() {
 		backfillLSNs := backfill(replicationClients, trucksByInputConnection)
+
+		// Register subscribers after backfill so each truck's LSN is accurate.
+		for connName, rc := range replicationClients {
+			for _, t := range trucksByInputConnection[connName] {
+				rc.Register(postgres.Subscriber{
+					Name:     t.Name,
+					Tables:   tablesAsSet(t.InputTables),
+					Ch:       t.TransactionChan,
+					StartLSN: t.Writer.GetCurrentPosition(),
+					Done:     t.KillChan,
+				})
+			}
+		}
+
+		// Start all truck goroutines once.
+		for _, trucks := range trucksByInputConnection {
+			for _, t := range trucks {
+				t.Start()
+			}
+		}
+
 		catchup(replicationClients, trucksByInputConnection, backfillLSNs)
-		streamChanges(trucksByInputConnection)
+		streamChanges(replicationClients, trucksByInputConnection)
 	}()
 
-	return doneChan, truckCfgs, trucksByInputConnection
+	return doneChan, truckCfgs, trucksByInputConnection, replicationClients
+}
+
+func tablesAsSet(tables []string) map[string]bool {
+	set := make(map[string]bool, len(tables))
+	for _, t := range tables {
+		set[t] = true
+	}
+	return set
 }
 
 func backfill(replicationClients map[string]*postgres.ReplicationClient, trucks map[string][]*truck.Truck) map[string]uint64 {
@@ -59,8 +88,8 @@ func backfill(replicationClients map[string]*postgres.ReplicationClient, trucks 
 		defer rc.ResetStreamConn()
 		log.Println("Backfill LSN", pglogrepl.LSN(backfillLSN))
 
-		for _, truck := range trucks[connName] {
-			truck.Backfill(snapshotName, backfillLSN, tablesToBackfill)
+		for _, t := range trucks[connName] {
+			t.Backfill(snapshotName, backfillLSN, tablesToBackfill)
 		}
 
 		backfillLSNs[connName] = backfillLSN
@@ -71,69 +100,36 @@ func backfill(replicationClients map[string]*postgres.ReplicationClient, trucks 
 
 func catchup(replicationClients map[string]*postgres.ReplicationClient, trucks map[string][]*truck.Truck, backfillLSNs map[string]uint64) {
 	for connName, rc := range replicationClients {
-		var startLSN uint64
 		endLSN := backfillLSNs[connName]
+		startLSN := rc.MinTruckLSN()
 
-		for _, truck := range trucks[connName] {
-			log.Printf("[Truck %s] Catching up to latest stream position...\n", truck.Name)
-
-			truckLSN := truck.Writer.GetCurrentPosition()
-			if truckLSN < startLSN || startLSN == 0 {
-				startLSN = truckLSN
-			}
-
-			truck.Start()
-		}
+		log.Printf("[catchup] conn=%s startLSN=%d endLSN=%d\n", connName, startLSN, endLSN)
 
 		if startLSN > 0 && endLSN > 0 {
-			changesChan := rc.Start(startLSN, endLSN)
-			for transaction := range changesChan {
-				for _, truck := range trucks[connName] {
-					truck.ProcessChangeset(transaction)
-				}
+			rc.Start(startLSN, endLSN)
+			<-rc.WaitDone()
+		}
 
-				if transaction.StreamPosition > 0 {
-					rc.SetProcessedLSN(transaction.StreamPosition)
-				}
-			}
+		for _, t := range trucks[connName] {
+			log.Printf("[Truck %s] Caught up to stream position %d\n", t.Name, t.Writer.GetCurrentPosition())
 		}
 	}
 }
 
-func streamChanges(trucksByInputConnection map[string][]*truck.Truck) {
-	trucksByRc := make(map[*postgres.ReplicationClient][]*truck.Truck)
-	for _, trucks := range trucksByInputConnection {
-		for _, t := range trucks {
-			if _, ok := trucksByRc[t.ReplicationClient]; !ok {
-				trucksByRc[t.ReplicationClient] = make([]*truck.Truck, 0, 1)
+func streamChanges(replicationClients map[string]*postgres.ReplicationClient, trucks map[string][]*truck.Truck) {
+	for connName, rc := range replicationClients {
+		// Stream starts from the lowest truck LSN so no truck loses data on restart.
+		startLSN := rc.MinTruckLSN()
+		log.Printf("[stream] conn=%s startLSN=%d\n", connName, startLSN)
+
+		// Close RC when all trucks on this connection are stopped.
+		go func(rc *postgres.ReplicationClient, truckList []*truck.Truck) {
+			for _, t := range truckList {
+				<-t.KillChan
 			}
+			rc.Close()
+		}(rc, trucks[connName])
 
-			trucksByRc[t.ReplicationClient] = append(trucksByRc[t.ReplicationClient], t)
-		}
-	}
-
-	for rc, trucks := range trucksByRc {
-		var startLSN uint64
-
-		for _, t := range trucks {
-			truckLSN := t.Writer.GetCurrentPosition()
-
-			if truckLSN < startLSN || startLSN == 0 {
-				startLSN = truckLSN
-			}
-
-			t.Start()
-		}
-
-		changesChan := rc.Start(startLSN, 0)
-		for transaction := range changesChan {
-			for _, truck := range trucks {
-				truck.ProcessChangeset(transaction)
-			}
-
-			if transaction.StreamPosition > 0 {
-				rc.SetProcessedLSN(transaction.StreamPosition)
-			}
-		}
+		rc.Start(startLSN, 0)
 	}
 }

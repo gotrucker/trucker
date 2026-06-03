@@ -37,6 +37,22 @@ CREATE TABLE public.whiskies_flat (
   country text
 );
 
+CREATE TABLE public.whiskies_flat_b (
+  id int PRIMARY KEY,
+  name text NOT NULL,
+  age int,
+  type text,
+  country text
+);
+
+CREATE TABLE public.more_whiskies_flat (
+  id int PRIMARY KEY,
+  name text NOT NULL,
+  age int,
+  type text,
+  country text
+);
+
 CREATE TABLE public.double_countries (
   id int PRIMARY KEY,
   name text NOT NULL

@@ -29,7 +29,7 @@ func TestMultipleInputTables(t *testing.T) {
 	}
 
 	// Start trucker with a single table in the truck
-	exitChan := cloneProjectAndStart("postgres_to_clickhouse")
+	stop := cloneProjectAndStart("postgres_to_clickhouse")
 
 	// Wait for backfill
 	for i := 0; ; i++ {
@@ -59,14 +59,14 @@ func TestMultipleInputTables(t *testing.T) {
 	}
 
 	// Stop trucker
-	close(exitChan)
+	stop()
 
 	// Add a row to the whiskies table while trucker is stopped, so we can test catchup.
 	pgConn.Exec(context.Background(), "INSERT INTO public.whiskies (name, age, whisky_type_id) VALUES ('Catchup Whisky', 4, 2)")
 
 	// Start trucker with an extra table in the truck
-	exitChan = cloneProjectAndStart("multiple_input_tables")
-	defer close(exitChan)
+	stop = cloneProjectAndStart("multiple_input_tables")
+	defer stop()
 
 	// Check if backfill runs correctly with the data from the new table
 	for i := 0; ; i++ {

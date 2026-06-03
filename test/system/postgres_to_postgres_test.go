@@ -22,8 +22,8 @@ func TestPostgresToPostgres(t *testing.T) {
 		return lsn
 	}
 
-	exitChan := startTrucker("postgres_to_postgres")
-	defer close(exitChan)
+	stop := startTrucker("postgres_to_postgres")
+	defer stop()
 
 	// Test backfill
 	for i := 0; ; i++ {
@@ -150,8 +150,8 @@ func TestPostgresToPostgresLarge(t *testing.T) {
 		t.Error("Couldn't insert 15k rows... ", err)
 	}
 
-	exitChan := startTrucker("postgres_to_postgres")
-	defer close(exitChan)
+	stop := startTrucker("postgres_to_postgres")
+	defer stop()
 
 	// Test backfill
 	for i := 0; ; i++ {

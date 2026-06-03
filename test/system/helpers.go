@@ -16,24 +16,23 @@ var (
 	Basepath   = filepath.Dir(b)
 )
 
-func startTrucker(project string) chan struct{} {
-	_, _, trucksByInputConnection := mainroutines.Start(Basepath + "/../fixtures/projects/" + project)
-	exitChan := make(chan struct{})
+func startTrucker(project string) func() {
+	_, _, trucksByInputConnection, rcClients := mainroutines.Start(Basepath + "/../fixtures/projects/" + project)
 
-	go func() {
-		<-exitChan
-
+	return func() {
 		for _, trucks := range trucksByInputConnection {
 			for _, truck := range trucks {
 				truck.Stop()
 			}
 		}
-	}()
-
-	return exitChan
+		for _, rc := range rcClients {
+			rc.Close()
+			<-rc.WaitDone()
+		}
+	}
 }
 
-func cloneProjectAndStart(project string) chan struct{} {
+func cloneProjectAndStart(project string) func() {
 	tmpPath := Basepath + "/../../tmp/"
 	os.RemoveAll(tmpPath + project)
 	os.MkdirAll(tmpPath, os.ModePerm)
@@ -42,20 +41,19 @@ func cloneProjectAndStart(project string) chan struct{} {
 		panic(err)
 	}
 
-	_, _, trucksByInputConnection := mainroutines.Start(tmpPath + project)
-	exitChan := make(chan struct{})
+	_, _, trucksByInputConnection, rcClients := mainroutines.Start(tmpPath + project)
 
-	go func() {
-		<-exitChan
-
+	return func() {
 		for _, trucks := range trucksByInputConnection {
 			for _, truck := range trucks {
 				truck.Stop()
 			}
 		}
-	}()
-
-	return exitChan
+		for _, rc := range rcClients {
+			rc.Close()
+			<-rc.WaitDone()
+		}
+	}
 }
 
 func copyFile(src, dst string) error {

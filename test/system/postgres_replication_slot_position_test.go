@@ -12,8 +12,8 @@ func TestPostgresReplicationSlotPosition(t *testing.T) {
 	conn := helpers.PreparePostgresTestDb()
 	defer conn.Close(context.Background())
 
-	exitChan := startTrucker("postgres_to_postgres")
-	defer close(exitChan)
+	stop := startTrucker("postgres_to_postgres")
+	defer stop()
 
 	getCurrentLsn := func() int64 {
 		var lsn int64
