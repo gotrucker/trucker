@@ -158,4 +158,3 @@ func NewWriter(inputConnectionName string, outputSql string, cfg config.Connecti
 
 	return nil
 }
-

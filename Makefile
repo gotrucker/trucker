@@ -41,6 +41,7 @@ build_images:
 	docker buildx build \
 		--output "type=docker,push=false" \
 		--tag tonyfg/trucker:$(FULL_VERSION) \
+		--build-arg TRUCKER_VERSION=$(FULL_VERSION) \
 		.
 
 push_images:
@@ -50,4 +51,5 @@ push_images:
 		--output "type=image,push=true" \
 		--tag tonyfg/trucker:$(FULL_VERSION) \
 		--tag tonyfg/trucker:$(MAJOR_VERSION) \
+		--build-arg TRUCKER_VERSION=$(FULL_VERSION) \
 		.

@@ -22,7 +22,7 @@ type Subscriber struct {
 	Name     string
 	Tables   map[string]bool
 	Ch       chan db.Transaction
-	StartLSN uint64    // initial LSN seeded into the per-truck ack map
+	StartLSN uint64     // initial LSN seeded into the per-truck ack map
 	Done     <-chan any // closed when the truck is shutting down; nil means ignored
 }
 

@@ -1,5 +1,5 @@
 volumes:
-  go-build-cache:
+  go_cache:
   pg_input-data:
   pg_input_replica-data:
   pg_output-data:
@@ -11,10 +11,10 @@ services:
       target: dev
     user: $UID:$GID
     volumes:
-    - go-build-cache:/home/trucker/go-build-cache
     - $PWD:/app
+    - go_cache:/tmp/go-cache
     environment:
-      GOCACHE: /home/trucker/go-build-cache
+      GOPATH: /tmp/go-cache
     env_file:
     - .env
     working_dir: /app

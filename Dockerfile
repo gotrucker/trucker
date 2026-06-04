@@ -1,32 +1,28 @@
-ARG GO_VERSION=1.25
+ARG GO_VERSION=1.26
 ARG GO_IMAGE=golang:${GO_VERSION}-alpine
-FROM $GO_IMAGE AS base
-RUN adduser -D trucker
 
-FROM --platform=${BUILDPLATFORM} base AS dev
+FROM --platform=${BUILDPLATFORM} $GO_IMAGE AS dev
 RUN apk add --no-cache postgresql17-client delve make git
-RUN mkdir -p /go/pkg/mod && chown trucker /go/pkg/mod
+RUN adduser -D trucker
 USER trucker
-RUN mkdir /home/trucker/go-build-cache
+RUN mkdir -p /tmp/go-cache
 
-FROM --platform=${BUILDPLATFORM} base AS build
+FROM --platform=${BUILDPLATFORM} $GO_IMAGE AS build
 ARG TARGETOS
 ARG TARGETARCH
-ENV GOCACHE=/home/trucker/go-build-cache
+ARG TRUCKER_VERSION
 ENV CGO_ENABLED=0
 ENV GOOS=${TARGETOS}
 ENV GOARCH=${TARGETARCH}
-COPY . /src
+ENV GOPATH=/tmp/go-cache
+ENV TRUCKER_VERSION=${TRUCKER_VERSION}
 WORKDIR /src
-USER trucker
-RUN --mount=type=cache,target=/go/pkg/mod/ \
-    --mount=type=bind,source=go.sum,target=go.sum \
-    --mount=type=bind,source=go.mod,target=go.mod \
-    --mount=type=cache,target="/home/trucker/go-build-cache" \
-    apk add --no-cache git && \
-    go build -v -ldflags="-s -w -X main.version=$(git tag --points-at HEAD)"
+COPY . .
+RUN --mount=type=cache,target=/tmp/go-cache \
+    go build -v -buildvcs=false -ldflags="-s -w -X main.version=${TRUCKER_VERSION}"
 
 FROM scratch
 COPY --from=build /src/trucker /trucker
 WORKDIR /project
+USER 31873
 ENTRYPOINT ["/trucker"]
