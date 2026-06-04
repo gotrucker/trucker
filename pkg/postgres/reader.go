@@ -82,7 +82,7 @@ func (r *Reader) Read(changes *db.Changes) *db.Changes {
 			changes.Table,
 		)
 		tmplVars["rows"] = "r"
-		r.prepareTempTable(conn, changes, columnsLiteral, rows, changes.Rows)
+		r.prepareTempTable(conn, changes, columnsLiteral, rows)
 	}
 
 	sql := new(bytes.Buffer)
@@ -149,11 +149,11 @@ func (r *Reader) Close() {
 	r.conn.Close()
 }
 
-func (r *Reader) prepareTempTable(conn *pgxpool.Conn, changeset *db.Changes, columnsLiteral string, rows [][]any, rowChan chan [][]any) {
+func (r *Reader) prepareTempTable(conn *pgxpool.Conn, changes *db.Changes, columnsLiteral string, rows [][]any) {
 	// Create a temporary table to store the rows
 	sb := strings.Builder{}
 	sb.WriteString("CREATE TEMPORARY TABLE r (")
-	for i, col := range changeset.Columns {
+	for i, col := range changes.Columns {
 		if i > 0 {
 			sb.WriteByte(',')
 		}
@@ -168,18 +168,18 @@ func (r *Reader) prepareTempTable(conn *pgxpool.Conn, changeset *db.Changes, col
 	}
 
 	baseSql := fmt.Sprintf("INSERT INTO r (%s) VALUES ", columnsLiteral)
-	numCols := len(changeset.Columns)
+	numCols := len(changes.Columns)
 	chunkSize := maxPreparedStatementArgs / numCols
 
-	// TODO [PERFORMANCE] We don't need to rebuild the string over and over again. We can reuse it for all of the chunks except the last one if that one's smaller.
 	for chunk := range slices.Chunk(rows, chunkSize) {
-		insertToTempTable(conn, baseSql, changeset.Columns, chunk)
+		insertToTempTable(conn, baseSql, changes.Columns, chunk)
 	}
-	for chunk := range rowChan {
-		insertToTempTable(conn, baseSql, changeset.Columns, chunk)
+	for chunk := range changes.Rows {
+		insertToTempTable(conn, baseSql, changes.Columns, chunk)
 	}
 }
 
+// TODO [PERFORMANCE] We don't need to rebuild the string over and over again every time this is called. We can reuse it for all of the chunks except the last one if that one's smaller.
 func insertToTempTable(conn *pgxpool.Conn, baseSql string, columns []db.Column, rows [][]any) {
 	sb := strings.Builder{}
 	sb.WriteString(baseSql)

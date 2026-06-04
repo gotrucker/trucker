@@ -44,6 +44,9 @@ type ReplicationClient struct {
 }
 
 func NewReplicationClient(tables []string, connCfg config.Connection, uniqueId string) *ReplicationClient {
+	// doneChan is created pre-closed because the replication client hasn't been
+	// started yet, so we avoid a deadlock in case someone call WaitDone() before
+	// Start()
 	preClosed := make(chan struct{})
 	close(preClosed)
 	return &ReplicationClient{

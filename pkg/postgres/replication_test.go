@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"net/netip"
 	"reflect"
 	"strings"
 	"testing"
@@ -265,6 +266,10 @@ got: %v`, expectedInsertCols, change.Columns)
 		}
 		if _, ok := row[2].(time.Time); !ok {
 			t.Errorf("Expected a_date to be time.Time, got %T", row[2])
+		}
+		expectedPrefix := netip.MustParsePrefix("193.137.213.0/24")
+		if row[3].(netip.Prefix) != expectedPrefix {
+			t.Errorf("Expected an_ip_addr to be 193.137.213.0/24, got %T(%v)", row[3], row[3])
 		}
 		if _, ok := row[4].(map[string]interface{}); !ok {
 			t.Errorf("Expected a_jsonb to be map[string]interface{}, got %T", row[4])

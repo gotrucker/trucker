@@ -120,11 +120,6 @@ func (t *Truck) Start() {
 	}()
 }
 
-// ProcessChangeset is kept for backward compatibility with integration tests.
-func (t *Truck) ProcessChangeset(transaction db.Transaction) {
-	t.TransactionChan <- transaction
-}
-
 func (t *Truck) Stop() {
 	select {
 	case <-t.KillChan:

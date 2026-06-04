@@ -32,7 +32,8 @@ func TestPostgresToPostgresHugeTransaction(t *testing.T) {
 		time.Sleep(300 * time.Millisecond)
 	}
 
-	// Add 1 million lines to go over 1GB transaction size
+	// Insert enough data to exceed logical_decoding_work_mem (64kB in docker-compose),
+	// which triggers pgoutput v2 streaming of in-progress transactions.
 	sql := "INSERT INTO public.whiskies (name,age,whisky_type_id) VALUES "
 	for i := range 8 {
 		if i > 0 {
@@ -45,7 +46,7 @@ func TestPostgresToPostgresHugeTransaction(t *testing.T) {
 	if err != nil {
 		t.Fatal("Couldn't start transaction: ", err)
 	}
-	for range 8 {
+	for range 32 {
 		tx.Exec(ctx, sql)
 	}
 	tx.Commit(ctx)
@@ -55,10 +56,10 @@ func TestPostgresToPostgresHugeTransaction(t *testing.T) {
 		row := conn.QueryRow(context.Background(), "SELECT count(*) FROM whiskies_flat")
 		row.Scan(&cnt)
 
-		if cnt == 68 {
+		if cnt == 260 {
 			break
 		} else if i > 3 {
-			t.Error("Expected 68 rows in whiskies_flat but found ", cnt)
+			t.Error("Expected 260 rows in whiskies_flat but found ", cnt)
 			break
 		}
 

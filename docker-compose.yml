@@ -25,9 +25,7 @@ services:
     command: sleep infinity
 
   pg_input:
-    build:
-      dockerfile: Dockerfile.pg
-    image: pg-with-wal2json
+    image: postgres:17
     volumes:
     - pg_input-data:/var/lib/postgresql/data
     environment:
@@ -43,7 +41,7 @@ services:
     - -clogical_decoding_work_mem=64kB
 
   pg_input_replica:
-    image: pg-with-wal2json
+    image: postgres:17
     volumes:
     - pg_input_replica-data:/var/lib/postgresql/data
     environment:
@@ -67,7 +65,7 @@ services:
       "
 
   pg_output:
-    image: pg-with-wal2json
+    image: postgres:17
     volumes:
     - pg_output-data:/var/lib/postgresql/data
     environment:
