@@ -5,19 +5,30 @@ Trucker is a SQL-based streaming ETL tool that reads from PostgreSQL replication
 ## Development Commands
 
 ### Development Environment
-- `make dev` - Start development environment with Docker Compose (PostgreSQL input/output, ClickHouse, Go container)
+
+**Always run `make dev` before executing any development commands.** The entire development environment runs inside Docker Compose — the Go toolchain, databases, and ClickHouse are all containers. Commands run on the host without the containers will fail or produce incorrect results.
+
+- `make dev` - Start development environment (run this first, every time)
 - `make stop` - Stop all Docker Compose services
 - `make sh` - Access Go development container shell
 - `make clean` - Clean up all Docker containers and volumes
 
 ### Building and Testing
-- `go build` - Build the Trucker binary
-- `go test -p 1 ./...` - Run unit tests (standard Go testing)
-- `go test -p 1 -v ./test/system/...` - Run system/integration tests
-- `go test -p 1 -v ./test/integration/...` - Run integration tests
+
+**Always use Makefile targets instead of crafting raw commands.** When a Makefile target exists for a task, use it. Only drop to `docker compose exec go <cmd>` for one-off commands that don't have a recipe yet, and consider adding a recipe if the command is likely to be used again.
+
+**All `go` commands must run inside the `go` container**, never on the host. The host may have a different Go version or lack the required environment variables and network access to the test databases.
+
+- `make test` - Run all tests (`go test -p 1 ./...` inside the `go` container)
+- `make test-gnarly` - Run the TPC-DS gnarly test suite (slow, ~15 min first run)
+- `make fmt` - Format all Go source files
+
+For commands not yet in the Makefile, run them via:
+```
+docker compose exec go go <args>
+```
 
 It's important to use `-p 1` when running `go test` to avoid conflicting data in the test DB.
-You can and should run `go ...` commands inside the Go docker container with `UID=$(id -u) GID=$(id -g) docker compose exec go go ...`.
 
 ### Docker Images
 - `make build_images` - Build Docker image for current platform

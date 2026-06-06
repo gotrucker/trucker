@@ -1,0 +1,30 @@
+INSERT INTO trucker.item_ch
+  (id, item_id, rec_start_date, rec_end_date, item_desc, current_price,
+   wholesale_cost, brand_id, brand, class_id, i_class, category_id, category,
+   manufact_id, manufact, i_size, formulation, color, units, container,
+   manager_id, product_name, deleted)
+SELECT r.id,
+       argMaxState(r.item_id,                   now64()),
+       argMaxState(r.rec_start_date,             now64()),
+       argMaxState(r.rec_end_date,               now64()),
+       argMaxState(r.item_desc,                  now64()),
+       argMaxState(r.current_price::Float64,     now64()),
+       argMaxState(r.wholesale_cost::Float64,    now64()),
+       argMaxState(r.brand_id::Int32,            now64()),
+       argMaxState(r.brand,                      now64()),
+       argMaxState(r.class_id::Int32,            now64()),
+       argMaxState(r.i_class,                    now64()),
+       argMaxState(r.category_id::Int32,         now64()),
+       argMaxState(r.category,                   now64()),
+       argMaxState(r.manufact_id::Int32,         now64()),
+       argMaxState(r.manufact,                   now64()),
+       argMaxState(r.i_size,                     now64()),
+       argMaxState(r.formulation,                now64()),
+       argMaxState(r.color,                      now64()),
+       argMaxState(r.units,                      now64()),
+       argMaxState(r.container,                  now64()),
+       argMaxState(r.manager_id::Int32,          now64()),
+       argMaxState(r.product_name,               now64()),
+       argMaxState({{ .operation | eq "delete" }}, now64())
+FROM {{ .rows }}
+GROUP BY id

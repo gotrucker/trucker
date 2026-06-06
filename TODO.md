@@ -31,7 +31,7 @@ We need to have logging levels at the very least:
 - Add only_columns and except_columns to truck.yml input section for performance improvement
 - When people use old__*, check if postgres tables are set to REPLICA IDENTITY FULL (or equivalent for other DBs). Show a decent error msg and exit if it's not
 - Integrate DuckDB as a library to allow having lots more input / output sources
-- Large tests with TPC-DS dataset and some gnarly scenarios
+- [x] Large tests with TPC-DS dataset and some gnarly scenarios (`make test-gnarly`)
 
 ## DB Migrations
 

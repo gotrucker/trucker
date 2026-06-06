@@ -1,0 +1,22 @@
+connections:
+- name: pg_input_conn
+  adapter: postgres
+  host: {{ or .PG_HOST "pg_input" }}
+  database: trucker
+  user: trucker
+  pass: pgpass
+  ssl: disable
+- name: pg_input2_conn
+  adapter: postgres
+  host: {{ or .PG_HOST2 "pg_input2" }}
+  database: trucker
+  user: trucker
+  pass: pgpass
+  ssl: disable
+- name: pg_output_conn
+  adapter: postgres
+  host: {{ or .PG_OUTPUT_HOST "pg_output" }}
+  database: trucker
+  user: trucker
+  pass: pgpass
+  ssl: disable

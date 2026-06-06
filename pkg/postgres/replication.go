@@ -19,11 +19,12 @@ import (
 
 // Subscriber represents one truck that wants to receive transactions from a replication stream.
 type Subscriber struct {
-	Name     string
-	Tables   map[string]bool
-	Ch       chan db.Transaction
-	StartLSN uint64     // initial LSN seeded into the per-truck ack map
-	Done     <-chan any // closed when the truck is shutting down; nil means ignored
+	Name        string
+	Tables      map[string]bool
+	Ch          chan db.Transaction
+	LsnFlushCh  chan<- uint64 // receives AutoAdvance LSNs for deferred ClickHouse flush; nil means ignored
+	StartLSN    uint64        // initial LSN seeded into the per-truck ack map
+	Done        <-chan any    // closed when the truck is shutting down; nil means ignored
 }
 
 type ReplicationClient struct {
@@ -37,10 +38,11 @@ type ReplicationClient struct {
 	doneChan        chan struct{}
 	columnsCache    map[string][]db.Column
 
-	mu          sync.Mutex
-	truckLSNs   map[string]uint64
-	minTruckLSN pglogrepl.LSN
-	subscribers []Subscriber
+	mu               sync.Mutex
+	truckLSNs        map[string]uint64
+	minTruckLSN      pglogrepl.LSN
+	subscribers      []Subscriber
+	subscriberByName map[string]*Subscriber
 }
 
 func NewReplicationClient(tables []string, connCfg config.Connection, uniqueId string) *ReplicationClient {
@@ -50,15 +52,16 @@ func NewReplicationClient(tables []string, connCfg config.Connection, uniqueId s
 	preClosed := make(chan struct{})
 	close(preClosed)
 	return &ReplicationClient{
-		publicationName: fmt.Sprintf("trucker_%s%s", connCfg.Database, uniqueId),
-		tables:          tables,
-		connCfg:         connCfg,
-		running:         false,
-		done:            make(chan struct{}),
-		doneChan:        preClosed,
-		columnsCache:    make(map[string][]db.Column),
-		truckLSNs:       make(map[string]uint64),
-		subscribers:     make([]Subscriber, 0),
+		publicationName:  fmt.Sprintf("trucker_%s%s", connCfg.Database, uniqueId),
+		tables:           tables,
+		connCfg:          connCfg,
+		running:          false,
+		done:             make(chan struct{}),
+		doneChan:         preClosed,
+		columnsCache:     make(map[string][]db.Column),
+		truckLSNs:        make(map[string]uint64),
+		subscribers:      make([]Subscriber, 0),
+		subscriberByName: make(map[string]*Subscriber),
 	}
 }
 
@@ -66,6 +69,7 @@ func NewReplicationClient(tables []string, connCfg config.Connection, uniqueId s
 // Must be called before Start.
 func (rc *ReplicationClient) Register(sub Subscriber) {
 	rc.subscribers = append(rc.subscribers, sub)
+	rc.subscriberByName[sub.Name] = &rc.subscribers[len(rc.subscribers)-1]
 	rc.mu.Lock()
 	rc.truckLSNs[sub.Name] = sub.StartLSN
 	rc.recomputeMinLSN()
@@ -83,7 +87,8 @@ func (rc *ReplicationClient) AckLSN(name string, lsn uint64) {
 }
 
 // AutoAdvance is called by the parser for subscribers that had no rows in a committed xid.
-// It advances the in-memory ack without the truck writing anything durably.
+// It advances the in-memory ack without the truck writing anything durably, and signals the
+// truck to eventually flush the LSN to its output tracking table.
 func (rc *ReplicationClient) AutoAdvance(name string, lsn uint64) {
 	rc.mu.Lock()
 	if lsn > rc.truckLSNs[name] {
@@ -91,6 +96,13 @@ func (rc *ReplicationClient) AutoAdvance(name string, lsn uint64) {
 		rc.recomputeMinLSN()
 	}
 	rc.mu.Unlock()
+
+	if sub, ok := rc.subscriberByName[name]; ok && sub.LsnFlushCh != nil {
+		select {
+		case sub.LsnFlushCh <- lsn:
+		default: // drop if buffered; truck holds the latest value already
+		}
+	}
 }
 
 // MinTruckLSN returns the minimum durably-acked LSN across all registered trucks.

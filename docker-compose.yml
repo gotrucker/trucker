@@ -2,6 +2,7 @@ volumes:
   go_cache:
   pg_input-data:
   pg_input_replica-data:
+  pg_input2-data:
   pg_output-data:
   clickhouse-data:
 
@@ -21,6 +22,7 @@ services:
     depends_on:
     - pg_input
     - pg_input_replica
+    - pg_input2
     - pg_output
     command: sleep infinity
 
@@ -63,6 +65,22 @@ services:
       chown -R postgres /var/lib/postgresql/data
       su postgres -c 'postgres -cwal_level=logical -cmax_wal_senders=10 -cmax_replication_slots=10 -chot_standby=on -crecovery_target_timeline=latest -clog_statement=all'
       "
+
+  pg_input2:
+    image: postgres:17
+    volumes:
+    - pg_input2-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: trucker
+      POSTGRES_PASSWORD: ignore_this # no need to use the password for auth, since we set the auth method to "trust"
+      POSTGRES_HOST_AUTH_METHOD: "trust\nhost replication all 0.0.0.0/0 trust"
+    command:
+    - -cwal_level=logical
+    - -cmax_wal_senders=10
+    - -cmax_replication_slots=10
+    - -chot_standby_feedback=on
+    - -clog_statement=all
+    - -clogical_decoding_work_mem=64kB
 
   pg_output:
     image: postgres:17

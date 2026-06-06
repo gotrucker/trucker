@@ -1,0 +1,6 @@
+input:
+  connection: pg_input_conn
+  table: public.store
+output:
+  connection: chconn
+  table: trucker.store_ch

@@ -179,4 +179,4 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 - Column filtering for performance optimization
 - Integrate DuckDB as a library for expanded read/write support
 - Support for other sources/destinations of data (webhooks, S3, etc)
-- Comprehensive e2e testing with TPC-DS datasets
+- Comprehensive e2e testing with TPC-DS datasets (`make test-gnarly`)

@@ -49,11 +49,12 @@ func Start(projectPath string) (chan truck.ExitMsg, []config.Truck, map[string][
 		for connName, rc := range replicationClients {
 			for _, t := range trucksByInputConnection[connName] {
 				rc.Register(postgres.Subscriber{
-					Name:     t.Name,
-					Tables:   tablesAsSet(t.InputTables),
-					Ch:       t.TransactionChan,
-					StartLSN: t.Writer.GetCurrentPosition(),
-					Done:     t.KillChan,
+					Name:       t.Name,
+					Tables:     tablesAsSet(t.InputTables),
+					Ch:         t.TransactionChan,
+					LsnFlushCh: t.LsnFlushCh,
+					StartLSN:   t.Writer.GetCurrentPosition(),
+					Done:       t.KillChan,
 				})
 			}
 		}

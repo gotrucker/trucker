@@ -2,7 +2,7 @@
 .EXPORT_ALL_VARIABLES:
 .ONESHELL:
 .NOTPARALLEL:
-.PHONY: dev stop sh clean test fmt build_images push_images
+.PHONY: dev stop sh clean test test-gnarly fmt build_images push_images
 
 # Export UID/GID to make dev containers run with the same UID/GID as the local
 # user
@@ -32,6 +32,9 @@ clean:
 
 test:
 	docker compose exec go go test -p 1 ./...
+
+test-gnarly:
+	docker compose exec go go test -p 1 -tags gnarly -timeout 30m -v ./test/gnarly/...
 
 fmt:
 	docker compose exec go go fmt ./...

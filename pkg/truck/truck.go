@@ -26,6 +26,7 @@ type Truck struct {
 	OutputSql            string
 	SlowQueryThresholdMs int64
 	TransactionChan      chan db.Transaction
+	LsnFlushCh           chan uint64 // receives AutoAdvance LSNs; debounced before flushing to output
 	KillChan             chan any
 	DoneChan             chan ExitMsg
 }
@@ -40,6 +41,7 @@ func NewTruck(cfg config.Truck, rc *postgres.ReplicationClient, connCfgs map[str
 		Writer:               NewWriter(cfg.Input.Connection, cfg.Output.Sql, connCfgs[cfg.Output.Connection], uniqueId),
 		SlowQueryThresholdMs: cfg.SlowQueryThresholdMs,
 		TransactionChan:      make(chan db.Transaction),
+		LsnFlushCh:           make(chan uint64, 1),
 		KillChan:             make(chan any),
 		DoneChan:             doneChan,
 	}
@@ -74,6 +76,8 @@ func (t *Truck) Backfill(snapshotName string, targetLSN uint64, allTables []stri
 	log.Printf("[Truck %s] Backfill complete in %f seconds!\n", t.Name, time.Since(start).Seconds())
 }
 
+const lsnFlushDelay = 3 * time.Second
+
 func (t *Truck) Start() {
 	log.Printf("[Truck %s] Starting to read from replication stream...\n", t.Name)
 
@@ -82,6 +86,10 @@ func (t *Truck) Start() {
 			t.DoneChan <- ExitMsg{t.Name, "Exited!"}
 		}()
 
+		var pendingFlushLSN uint64
+		flushTimer := time.NewTimer(0)
+		flushTimer.Stop()
+
 		for {
 			select {
 			case transaction, ok := <-t.TransactionChan:
@@ -89,6 +97,15 @@ func (t *Truck) Start() {
 					log.Printf("[Truck %s] Transaction channel closed. Exiting...\n", t.Name)
 					return
 				}
+
+				// Cancel any pending deferred flush — a real transaction supersedes it.
+				if !flushTimer.Stop() {
+					select {
+					case <-flushTimer.C:
+					default:
+					}
+				}
+				pendingFlushLSN = 0
 
 				// TODO: All of the following should be written in a single transaction, including the SetCurrentPosition call
 				now := time.Now()
@@ -108,6 +125,19 @@ func (t *Truck) Start() {
 				if transaction.StreamPosition != 0 {
 					t.Writer.SetCurrentPosition(transaction.StreamPosition)
 					t.ReplicationClient.AckLSN(t.Name, transaction.StreamPosition)
+				}
+
+			case lsn := <-t.LsnFlushCh:
+				if lsn > pendingFlushLSN {
+					pendingFlushLSN = lsn
+				}
+				flushTimer.Reset(lsnFlushDelay)
+
+			case <-flushTimer.C:
+				if pendingFlushLSN != 0 {
+					t.Writer.SetCurrentPosition(pendingFlushLSN)
+					t.ReplicationClient.AckLSN(t.Name, pendingFlushLSN)
+					pendingFlushLSN = 0
 				}
 
 			case <-t.KillChan:

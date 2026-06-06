@@ -1,0 +1,7 @@
+slow_query_threshold_ms: 30000
+input:
+  connection: pg_input_conn
+  table: public.store_sales
+output:
+  connection: chconn
+  table: trucker.store_sales_flat

@@ -1,0 +1,16 @@
+unique_id: 3
+slow_query_threshold_ms: 15000
+connections:
+- name: pg_input_conn
+  adapter: postgres
+  host: {{ or .PG_HOST "pg_input" }}
+  database: trucker
+  user: trucker
+  pass: pgpass
+  ssl: allow
+- name: chconn
+  adapter: clickhouse
+  host: clickhouse
+  database: trucker
+  user: trucker
+  pass: trucker

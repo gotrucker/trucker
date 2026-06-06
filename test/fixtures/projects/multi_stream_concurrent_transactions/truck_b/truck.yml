@@ -1,0 +1,5 @@
+input:
+  connection: pg_input2_conn
+  table: public.whiskies
+output:
+  connection: pg_output_conn

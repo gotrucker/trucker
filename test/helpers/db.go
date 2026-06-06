@@ -27,6 +27,25 @@ var (
 		Database: "trucker",
 		User:     "trucker",
 	}
+	PostgresCfg2 = config.Connection{
+		Name:     "test_pg2",
+		Adapter:  "postgres",
+		Host:     "pg_input2",
+		Port:     5432,
+		Ssl:      "allow",
+		Database: "trucker",
+		User:     "trucker",
+	}
+	PostgresOutputCfg = config.Connection{
+		Name:     "test_pg_output",
+		Adapter:  "postgres",
+		Host:     "pg_output",
+		Port:     5432,
+		Ssl:      "allow",
+		Database: "trucker",
+		User:     "trucker",
+		Pass:     "pgpass",
+	}
 	ClickhouseCfg = config.Connection{
 		Name:     "test_ch",
 		Adapter:  "clickhouse",
@@ -42,6 +61,30 @@ func PreparePostgresTestDb() *pgx.Conn {
 	conn := Connect(PostgresCfg)
 
 	sql := ReadTestDbSql(PostgresCfg.Adapter)
+	_, err := conn.Exec(context.Background(), sql)
+	if err != nil {
+		panic(err)
+	}
+
+	return conn
+}
+
+func PreparePostgresTestDb2() *pgx.Conn {
+	conn := Connect(PostgresCfg2)
+
+	sql := ReadTestDbSql(PostgresCfg2.Adapter)
+	_, err := conn.Exec(context.Background(), sql)
+	if err != nil {
+		panic(err)
+	}
+
+	return conn
+}
+
+func PreparePostgresOutputDb() *pgx.Conn {
+	conn := Connect(PostgresOutputCfg)
+
+	sql := ReadTestDbSql(PostgresOutputCfg.Adapter)
 	_, err := conn.Exec(context.Background(), sql)
 	if err != nil {
 		panic(err)
