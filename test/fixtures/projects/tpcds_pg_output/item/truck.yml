@@ -1,0 +1,6 @@
+input:
+  connection: pg_input_conn
+  table: public.item
+output:
+  connection: pg_output_conn
+  table: trucker.item_pg

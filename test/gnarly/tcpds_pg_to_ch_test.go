@@ -17,7 +17,7 @@ import (
 	"github.com/tonyfg/trucker/test/helpers"
 )
 
-func TestTpcdsGnarly(t *testing.T) {
+func TestTpcdsPgToCh(t *testing.T) {
 	pgConn, chConn := ensureTpcdsLoaded(t)
 	defer pgConn.Close(context.Background())
 	defer chConn.Close()

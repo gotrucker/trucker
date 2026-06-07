@@ -35,6 +35,46 @@ const (
 
 // ensureTpcdsLoaded sets up TPC-DS schema and data, skipping data generation if
 // store_sales already has the expected row count from a prior run.
+func ensureTpcdsLoadedPgOut(t *testing.T) (*pgx.Conn, *pgx.Conn) {
+	t.Helper()
+
+	pgConn := helpers.Connect(helpers.PostgresCfg)
+
+	var count int64
+	if err := pgConn.QueryRow(context.Background(),
+		"SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='store_sales'",
+	).Scan(&count); err != nil || count == 0 {
+		t.Log("TPC-DS schema not present, creating from scratch...")
+		prepareTpcdsSchema(pgConn)
+		generateAndLoad(t, pgConn)
+	} else {
+		var rowCount int64
+		pgConn.QueryRow(context.Background(), "SELECT COUNT(*) FROM public.store_sales").Scan(&rowCount)
+		if rowCount != StoreSalesCount {
+			t.Logf("store_sales has %d rows (expected %d), reloading...", rowCount, StoreSalesCount)
+			prepareTpcdsSchema(pgConn)
+			generateAndLoad(t, pgConn)
+		} else {
+			t.Log("TPC-DS data already loaded, resetting replication artifacts only.")
+			resetReplicationArtifacts(pgConn)
+		}
+	}
+
+	pgOutConn := prepareTpcdsPostgresOutput()
+	return pgConn, pgOutConn
+}
+
+func prepareTpcdsPostgresOutput() *pgx.Conn {
+	conn := helpers.Connect(helpers.PostgresOutputCfg)
+	sql := readFixtureSQL("tpcds_postgres_output.sql")
+	for _, stmt := range splitSQL(sql) {
+		if _, err := conn.Exec(context.Background(), stmt); err != nil {
+			panic(fmt.Sprintf("error executing TPC-DS postgres output DDL:\n%s\n%v", stmt, err))
+		}
+	}
+	return conn
+}
+
 func ensureTpcdsLoaded(t *testing.T) (*pgx.Conn, *ch.Client) {
 	t.Helper()
 

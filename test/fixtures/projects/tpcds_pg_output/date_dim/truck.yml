@@ -1,0 +1,6 @@
+input:
+  connection: pg_input_conn
+  table: public.date_dim
+output:
+  connection: pg_output_conn
+  table: trucker.date_dim_pg
