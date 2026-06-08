@@ -155,9 +155,18 @@ Steps to migrate:
 
 ## Observability
 
-Not implemented yet. Trucker will provide observability capabilities through:
-- Prometheus compatible metrics for monitoring trucker and pipelines
-- Structured logging via [zap](https://pkg.go.dev/go.uber.org/zap)
+Trucker exposes a Prometheus-compatible `/metrics` endpoint for monitoring pipeline throughput, latency, errors, and replication health. Enable it by adding `metrics_addr` to your `trucker.yml`:
+
+```yaml
+connections:
+  - name: webapp_db
+    adapter: postgres
+    # ...
+
+metrics_addr: ":9091"
+```
+
+This starts an HTTP server on port 9090 exposing metrics at `/metrics`. See [docs/metrics.md](docs/metrics.md) for a full list of available metrics and example PromQL queries.
 
 ## Documentation
 
@@ -184,7 +193,6 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 - Base documentation and examples
 - Database migrations system
 - Structured logging
-- Prometheus compatible metrics exporter
 - trucker.yml/truck.yml options to deal with special backfill situations (whether to truncate destination tables, etc)
 - MySQL/MariaDB support
 - Snowflake support
