@@ -2,16 +2,18 @@ package mainroutines
 
 import (
 	"log"
+	"net/http"
 	"path/filepath"
 
 	"github.com/jackc/pglogrepl"
 
 	"github.com/tonyfg/trucker/pkg/config"
+	"github.com/tonyfg/trucker/pkg/metrics"
 	"github.com/tonyfg/trucker/pkg/postgres"
 	"github.com/tonyfg/trucker/pkg/truck"
 )
 
-func Start(projectPath string) (chan truck.ExitMsg, []config.Truck, map[string][]*truck.Truck, map[string]*postgres.ReplicationClient) {
+func Start(projectPath string, version string) (chan truck.ExitMsg, []config.Truck, map[string][]*truck.Truck, map[string]*postgres.ReplicationClient, *http.Server) {
 	ymlPath := filepath.Join(projectPath, "trucker.yml")
 	cfg := config.Load(ymlPath)
 	truckCfgs := config.LoadTrucks(projectPath, cfg)
@@ -42,6 +44,14 @@ func Start(projectPath string) (chan truck.ExitMsg, []config.Truck, map[string][
 		trucksByInputConnection[truckCfg.Input.Connection] = append(trucksByInputConnection[truckCfg.Input.Connection], &t)
 	}
 
+	metrics.Register(version)
+
+	var metricsSrv *http.Server
+	if cfg.MetricsAddr != "" {
+		metricsSrv = metrics.Serve(cfg.MetricsAddr)
+		log.Printf("Prometheus metrics available at http://%s/metrics\n", cfg.MetricsAddr)
+	}
+
 	go func() {
 		backfillLSNs := backfill(replicationClients, trucksByInputConnection)
 
@@ -70,7 +80,7 @@ func Start(projectPath string) (chan truck.ExitMsg, []config.Truck, map[string][
 		streamChanges(replicationClients, trucksByInputConnection)
 	}()
 
-	return doneChan, truckCfgs, trucksByInputConnection, replicationClients
+	return doneChan, truckCfgs, trucksByInputConnection, replicationClients, metricsSrv
 }
 
 func tablesAsSet(tables []string) map[string]bool {

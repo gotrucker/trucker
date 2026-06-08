@@ -17,7 +17,7 @@ var (
 )
 
 func startTrucker(project string) func() {
-	_, _, trucksByInputConnection, rcClients := mainroutines.Start(Basepath + "/../fixtures/projects/" + project)
+	_, _, trucksByInputConnection, rcClients, _ := mainroutines.Start(Basepath+"/../fixtures/projects/"+project, "test")
 
 	return func() {
 		for _, trucks := range trucksByInputConnection {
@@ -41,7 +41,7 @@ func cloneProjectAndStart(project string) func() {
 		panic(err)
 	}
 
-	_, _, trucksByInputConnection, rcClients := mainroutines.Start(tmpPath + project)
+	_, _, trucksByInputConnection, rcClients, _ := mainroutines.Start(tmpPath+project, "test")
 
 	return func() {
 		for _, trucks := range trucksByInputConnection {

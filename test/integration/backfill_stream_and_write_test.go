@@ -29,11 +29,13 @@ func TestBackfillReplicationReadAndWrite(t *testing.T) {
 	rc := postgres.NewReplicationClient([]string{"public.whiskies"}, helpers.PostgresCfg, "2")
 
 	r := truck.NewReader(
+		"test",
 		readQuery,
 		helpers.PostgresCfg,
 	)
 
 	w := truck.NewWriter(
+		"test",
 		"test",
 		`INSERT INTO trucker.whiskies_flat (id, name, age, type, country)
 SELECT id,

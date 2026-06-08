@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"os/signal"
@@ -15,7 +16,7 @@ func main() {
 	log.Printf("Trucker version %s. Firing up the engine!\n", version)
 	sigChan := trapSignals()
 	projectPath := projectPathFromArgsOrCwd()
-	doneChan, truckCfgs, trucksByInputConnection, _ := mainroutines.Start(projectPath)
+	doneChan, truckCfgs, trucksByInputConnection, _, metricsSrv := mainroutines.Start(projectPath, version)
 
 	if len(truckCfgs) > 0 {
 	outerLoop:
@@ -41,6 +42,9 @@ func main() {
 		}
 	}
 
+	if metricsSrv != nil {
+		metricsSrv.Shutdown(context.Background())
+	}
 	log.Println("All trucks stopped. Exiting!")
 }
 

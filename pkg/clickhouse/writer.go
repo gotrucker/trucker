@@ -15,9 +15,11 @@ import (
 
 	"github.com/tonyfg/trucker/pkg/config"
 	"github.com/tonyfg/trucker/pkg/db"
+	"github.com/tonyfg/trucker/pkg/metrics"
 )
 
 type Writer struct {
+	truckName       string
 	currentLsnTable string
 	queryTemplate   *template.Template
 	conn            *chpool.Pool
@@ -25,15 +27,17 @@ type Writer struct {
 	cfg             config.Connection
 }
 
-func NewWriter(inputConnectionName string, writeQuery string, cfg config.Connection, uniqueId string) *Writer {
+func NewWriter(truckName string, inputConnectionName string, writeQuery string, cfg config.Connection, uniqueId string) *Writer {
 	tmpl, err := template.New("outputSql").Parse(writeQuery)
 	if err != nil {
+		metrics.DBErrors.WithLabelValues("clickhouse", "writer").Inc()
 		panic(err)
 	}
 
 	conn := NewConnection(cfg.User, cfg.Pass, cfg.Host, cfg.Port, cfg.Database)
 
 	return &Writer{
+		truckName: truckName,
 		// FIXME: LSN tracking should be done per-truck, since writing the same
 		// change on multiple trucks can be interruped midway through
 		currentLsnTable: fmt.Sprintf(`"%s"."trucker_current_lsn__%s%s"`, cfg.Database, inputConnectionName, uniqueId),
@@ -79,17 +83,23 @@ func (w *Writer) GetCurrentPosition() uint64 {
 }
 
 func (w *Writer) Write(changeset *db.Changes) bool {
+	if changeset == nil {
+		return false
+	}
 	ctx := context.Background()
 	conn, err := w.conn.Acquire(ctx)
 	if err != nil {
+		metrics.DBErrors.WithLabelValues("clickhouse", "writer").Inc()
 		panic(err)
 	}
 	defer conn.Release()
 
-	if !populateTempTable(ctx, conn, changeset) {
+	rowCount, ok := populateTempTable(ctx, conn, changeset)
+	if !ok {
 		return false
 	}
 	defer conn.Do(ctx, ch.Query{Body: "DROP TEMPORARY TABLE IF EXISTS r"})
+	metrics.QueryMode.WithLabelValues(w.truckName, "writer", "temp_table", "clickhouse").Inc()
 
 	tmplVars := map[string]string{
 		"operation":   db.OperationStr(changeset.Operation),
@@ -100,14 +110,19 @@ func (w *Writer) Write(changeset *db.Changes) bool {
 	sql := new(bytes.Buffer)
 	err = w.queryTemplate.Execute(sql, tmplVars)
 	if err != nil {
+		metrics.DBErrors.WithLabelValues("clickhouse", "writer").Inc()
 		panic(err)
 	}
 
 	err = conn.Do(ctx, ch.Query{Body: sql.String()})
 	if err != nil {
+		metrics.DBErrors.WithLabelValues("clickhouse", "writer").Inc()
 		panic(err)
 	}
 
+	if rowCount > 0 {
+		metrics.RowsWritten.WithLabelValues(w.truckName, changeset.Table, db.OperationStr(changeset.Operation)).Add(float64(rowCount))
+	}
 	return true
 }
 
@@ -122,8 +137,9 @@ func (w *Writer) Close() {
 	w.conn.Close()
 }
 
-func populateTempTable(ctx context.Context, conn *chpool.Client, changeset *db.Changes) bool {
+func populateTempTable(ctx context.Context, conn *chpool.Client, changeset *db.Changes) (int64, bool) {
 	tableCreated := false
+	var rowCount int64
 
 	for batch := range changeset.Rows {
 		if !tableCreated {
@@ -137,6 +153,7 @@ func populateTempTable(ctx context.Context, conn *chpool.Client, changeset *db.C
 			for i, col := range changeset.Columns {
 				appendValue(values, col, row, i)
 			}
+			rowCount++
 		}
 
 		var block proto.Input
@@ -146,11 +163,12 @@ func populateTempTable(ctx context.Context, conn *chpool.Client, changeset *db.C
 
 		err := conn.Do(ctx, ch.Query{Body: "INSERT INTO r VALUES", Input: block})
 		if err != nil {
+			metrics.DBErrors.WithLabelValues("clickhouse", "writer").Inc()
 			panic(err)
 		}
 	}
 
-	return tableCreated
+	return rowCount, tableCreated
 }
 
 func createTempTable(ctx context.Context, conn *chpool.Client, changeset *db.Changes) {
@@ -161,6 +179,7 @@ func createTempTable(ctx context.Context, conn *chpool.Client, changeset *db.Cha
 
 	err := conn.Do(ctx, ch.Query{Body: sb.String(), Result: proto.Results{}})
 	if err != nil {
+		metrics.DBErrors.WithLabelValues("clickhouse", "writer").Inc()
 		panic(err)
 	}
 }
@@ -398,6 +417,7 @@ func appendValue(values map[string]proto.ColInput, col db.Column, row []any, i i
 func (w *Writer) chDo(ctx context.Context, query ch.Query) {
 	if err := w.conn.Do(ctx, query); err != nil {
 		log.Printf("[Clickhouse Writer] Error executing SQL:\n%s", query.Body)
+		metrics.DBErrors.WithLabelValues("clickhouse", "writer").Inc()
 		panic(err)
 	}
 }

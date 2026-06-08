@@ -30,6 +30,7 @@ type connectionYml struct {
 
 type configYml struct {
 	UniqueId             string          `yaml:"unique_id"`
+	MetricsAddr          string          `yaml:"metrics_addr"`
 	SlowQueryThresholdMs int64           `yaml:"slow_query_threshold_ms"`
 	Connections          []connectionYml `yaml:"connections"`
 }
@@ -47,6 +48,7 @@ type Connection struct {
 
 type Config struct {
 	UniqueId             string
+	MetricsAddr          string
 	SlowQueryThresholdMs int64
 	Connections          map[string]Connection
 }
@@ -61,6 +63,7 @@ func Load(path string) Config {
 
 	config := Config{
 		UniqueId:             configYml.UniqueId,
+		MetricsAddr:          configYml.MetricsAddr,
 		SlowQueryThresholdMs: configYml.SlowQueryThresholdMs,
 		Connections:          make(map[string]Connection),
 	}

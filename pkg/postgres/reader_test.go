@@ -211,5 +211,5 @@ WHERE false`)
 
 func readerTestSetup(inputSql string) *Reader {
 	helpers.PreparePostgresTestDb().Close(context.Background())
-	return NewReader(inputSql, helpers.PostgresCfg)
+	return NewReader("test", inputSql, helpers.PostgresCfg)
 }

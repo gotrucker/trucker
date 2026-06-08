@@ -8,6 +8,7 @@ import (
 	"github.com/tonyfg/trucker/pkg/clickhouse"
 	"github.com/tonyfg/trucker/pkg/config"
 	"github.com/tonyfg/trucker/pkg/db"
+	"github.com/tonyfg/trucker/pkg/metrics"
 	"github.com/tonyfg/trucker/pkg/postgres"
 )
 
@@ -18,6 +19,8 @@ type ExitMsg struct {
 
 type Truck struct {
 	Name                 string
+	InputDB              string
+	OutputDB             string
 	ReplicationClient    *postgres.ReplicationClient
 	readQuery            string
 	Reader               db.Reader
@@ -34,11 +37,13 @@ type Truck struct {
 func NewTruck(cfg config.Truck, rc *postgres.ReplicationClient, connCfgs map[string]config.Connection, doneChan chan ExitMsg, uniqueId string) Truck {
 	return Truck{
 		Name:                 cfg.Name,
+		InputDB:              cfg.Input.Connection,
+		OutputDB:             cfg.Output.Connection,
 		ReplicationClient:    rc,
 		readQuery:            cfg.Input.Sql,
-		Reader:               NewReader(cfg.Input.Sql, connCfgs[cfg.Input.Connection]),
+		Reader:               NewReader(cfg.Name, cfg.Input.Sql, connCfgs[cfg.Input.Connection]),
 		InputTables:          cfg.Input.Tables,
-		Writer:               NewWriter(cfg.Input.Connection, cfg.Output.Sql, connCfgs[cfg.Output.Connection], uniqueId),
+		Writer:               NewWriter(cfg.Name, cfg.Input.Connection, cfg.Output.Sql, connCfgs[cfg.Output.Connection], uniqueId),
 		SlowQueryThresholdMs: cfg.SlowQueryThresholdMs,
 		TransactionChan:      make(chan db.Transaction),
 		LsnFlushCh:           make(chan uint64, 1),
@@ -83,7 +88,13 @@ func (t *Truck) Start() {
 
 	go func() {
 		defer func() {
-			t.DoneChan <- ExitMsg{t.Name, "Exited!"}
+			if r := recover(); r != nil {
+				metrics.TruckPanics.WithLabelValues(t.Name).Inc()
+				log.Printf("[Truck %s] Panic: %v\n", t.Name, r)
+				t.DoneChan <- ExitMsg{t.Name, "Panicked!"}
+			} else {
+				t.DoneChan <- ExitMsg{t.Name, "Exited!"}
+			}
 		}()
 
 		var pendingFlushLSN uint64
@@ -106,38 +117,61 @@ func (t *Truck) Start() {
 					}
 				}
 				pendingFlushLSN = 0
+				metrics.LsnFlushPending.WithLabelValues(t.Name).Set(0)
+
+				metrics.TransactionsInFlight.WithLabelValues(t.Name).Inc()
+				metrics.Transactions.WithLabelValues(t.Name, t.InputDB, t.OutputDB).Inc()
+				txnStart := time.Now()
 
 				// TODO: All of the following should be written in a single transaction, including the SetCurrentPosition call
-				now := time.Now()
 				for changes := range transaction.Changes {
+					readStart := time.Now()
 					resultChangeset := t.Reader.Read(changes)
-					if time.Since(now).Milliseconds() > t.SlowQueryThresholdMs {
-						log.Printf("[Truck %s] Slow input query: took %dms for %d columns.\n", t.Name, time.Since(now).Milliseconds(), len(changes.Columns))
+					readDur := time.Since(readStart)
+
+					metrics.ReaderQueryDuration.WithLabelValues(t.Name, changes.Table, db.OperationStr(changes.Operation)).Observe(readDur.Seconds())
+					if readDur.Milliseconds() > t.SlowQueryThresholdMs {
+						log.Printf("[Truck %s] Slow input query: took %dms for %d columns.\n", t.Name, readDur.Milliseconds(), len(changes.Columns))
+						metrics.SlowQueries.WithLabelValues(t.Name, "reader").Inc()
 					}
 
-					now = time.Now()
+					writeStart := time.Now()
 					t.Writer.Write(resultChangeset)
-					if time.Since(now).Milliseconds() > t.SlowQueryThresholdMs {
-						log.Printf("[Truck %s] Slow output query: took %dms for %d columns.\n", t.Name, time.Since(now).Milliseconds(), len(resultChangeset.Columns))
+					writeDur := time.Since(writeStart)
+
+					metrics.WriterQueryDuration.WithLabelValues(t.Name, changes.Table, db.OperationStr(changes.Operation)).Observe(writeDur.Seconds())
+					if writeDur.Milliseconds() > t.SlowQueryThresholdMs {
+						log.Printf("[Truck %s] Slow output query: took %dms for %d columns.\n", t.Name, writeDur.Milliseconds(), len(changes.Columns))
+						metrics.SlowQueries.WithLabelValues(t.Name, "writer").Inc()
 					}
 				}
 
 				if transaction.StreamPosition != 0 {
 					t.Writer.SetCurrentPosition(transaction.StreamPosition)
 					t.ReplicationClient.AckLSN(t.Name, transaction.StreamPosition)
+					if !transaction.CommitTime.IsZero() {
+						metrics.ReplicationLagSeconds.WithLabelValues(t.InputDB, t.Name).Set(
+							time.Since(transaction.CommitTime).Seconds(),
+						)
+					}
 				}
+
+				metrics.TransactionDuration.WithLabelValues(t.Name, t.InputDB, t.OutputDB).Observe(time.Since(txnStart).Seconds())
+				metrics.TransactionsInFlight.WithLabelValues(t.Name).Dec()
 
 			case lsn := <-t.LsnFlushCh:
 				if lsn > pendingFlushLSN {
 					pendingFlushLSN = lsn
 				}
 				flushTimer.Reset(lsnFlushDelay)
+				metrics.LsnFlushPending.WithLabelValues(t.Name).Set(1)
 
 			case <-flushTimer.C:
 				if pendingFlushLSN != 0 {
 					t.Writer.SetCurrentPosition(pendingFlushLSN)
 					t.ReplicationClient.AckLSN(t.Name, pendingFlushLSN)
 					pendingFlushLSN = 0
+					metrics.LsnFlushPending.WithLabelValues(t.Name).Set(0)
 				}
 
 			case <-t.KillChan:
@@ -158,10 +192,10 @@ func (t *Truck) Stop() {
 	}
 }
 
-func NewReader(inputSql string, cfg config.Connection) db.Reader {
+func NewReader(truckName string, inputSql string, cfg config.Connection) db.Reader {
 	switch cfg.Adapter {
 	case "postgres":
-		return postgres.NewReader(inputSql, cfg)
+		return postgres.NewReader(truckName, inputSql, cfg)
 	case "clickhouse":
 		log.Fatalf("Clickhouse is not supported as an input source")
 	default:
@@ -171,12 +205,12 @@ func NewReader(inputSql string, cfg config.Connection) db.Reader {
 	return nil
 }
 
-func NewWriter(inputConnectionName string, outputSql string, cfg config.Connection, uniqueId string) db.Writer {
+func NewWriter(truckName string, inputConnectionName string, outputSql string, cfg config.Connection, uniqueId string) db.Writer {
 	switch cfg.Adapter {
 	case "postgres":
-		return postgres.NewWriter(inputConnectionName, outputSql, cfg, uniqueId)
+		return postgres.NewWriter(truckName, inputConnectionName, outputSql, cfg, uniqueId)
 	case "clickhouse":
-		return clickhouse.NewWriter(inputConnectionName, outputSql, cfg, uniqueId)
+		return clickhouse.NewWriter(truckName, inputConnectionName, outputSql, cfg, uniqueId)
 	default:
 		log.Fatalf("Unsupported adapter: %s", cfg.Adapter)
 	}

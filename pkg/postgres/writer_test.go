@@ -177,6 +177,7 @@ func writerTestSetup() *Writer {
 
 	return NewWriter(
 		"test",
+		"test",
 		"INSERT INTO whiskies (name, age, whisky_type_id) SELECT name, age, whisky_type_id FROM {{.rows}}",
 		helpers.PostgresCfg,
 		"2",

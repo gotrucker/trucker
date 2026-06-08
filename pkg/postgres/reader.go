@@ -13,23 +13,26 @@ import (
 
 	"github.com/tonyfg/trucker/pkg/config"
 	"github.com/tonyfg/trucker/pkg/db"
+	"github.com/tonyfg/trucker/pkg/metrics"
 )
 
 type Reader struct {
+	truckName     string
 	queryTemplate *template.Template
 	conn          *pgxpool.Pool
 }
 
-func NewReader(readQuery string, cfg config.Connection) *Reader {
+func NewReader(truckName string, readQuery string, cfg config.Connection) *Reader {
 	tmpl, err := template.New("inputSql").Parse(readQuery)
 	if err != nil {
 		log.Println("Error parsing input SQL template:\n", readQuery)
+		metrics.DBErrors.WithLabelValues("postgres", "reader").Inc()
 		panic(err)
 	}
 
 	conn := NewConnection(cfg.User, cfg.Pass, cfg.Host, cfg.Port, cfg.Database, cfg.Ssl, false)
 
-	return &Reader{queryTemplate: tmpl, conn: conn}
+	return &Reader{truckName: truckName, queryTemplate: tmpl, conn: conn}
 }
 
 func (r *Reader) Read(changes *db.Changes) *db.Changes {
@@ -72,6 +75,7 @@ func (r *Reader) Read(changes *db.Changes) *db.Changes {
 		sb.WriteString(columnsLiteral)
 		sb.WriteByte(')')
 		tmplVars["rows"] = sb.String()
+		metrics.QueryMode.WithLabelValues(r.truckName, "reader", "values", "postgres").Inc()
 	} else {
 		// Load in batches to a temporary table instead of using a VALUES list
 		// since we're over the maximum number of parameters supported by PG for
@@ -83,6 +87,7 @@ func (r *Reader) Read(changes *db.Changes) *db.Changes {
 		)
 		tmplVars["rows"] = "r"
 		r.prepareTempTable(conn, changes, columnsLiteral, rows)
+		metrics.QueryMode.WithLabelValues(r.truckName, "reader", "temp_table", "postgres").Inc()
 	}
 
 	sql := new(bytes.Buffer)
@@ -95,6 +100,7 @@ func (r *Reader) Read(changes *db.Changes) *db.Changes {
 	if err != nil {
 		log.Printf("[Postgres Reader] Error running query:\n%s\n", sql.String())
 		log.Printf("[Postgres Reader] Query values:\n%v\n", flatValues)
+		metrics.DBErrors.WithLabelValues("postgres", "reader").Inc()
 		panic(err)
 	}
 
@@ -109,6 +115,10 @@ func (r *Reader) Read(changes *db.Changes) *db.Changes {
 
 	rowChan := make(chan [][]any, channelSize)
 
+	truckName := r.truckName
+	table := changes.Table
+	op := db.OperationStr(changes.Operation)
+
 	// TODO This go routine is basically the same between reader and backfill. Refactor to avoid dups
 	go func() {
 		defer conn.Release()
@@ -117,14 +127,17 @@ func (r *Reader) Read(changes *db.Changes) *db.Changes {
 		defer close(rowChan)
 
 		rowBatch := make([][]any, 0, batchSize)
+		var rowCount int64
 
 		for results.Next() {
 			row, err := results.Values()
 			if err != nil {
+				metrics.DBErrors.WithLabelValues("postgres", "reader").Inc()
 				panic(err)
 			}
 
 			rowBatch = append(rowBatch, row)
+			rowCount++
 
 			if len(rowBatch) == batchSize {
 				rowChan <- rowBatch
@@ -134,6 +147,10 @@ func (r *Reader) Read(changes *db.Changes) *db.Changes {
 
 		if len(rowBatch) > 0 {
 			rowChan <- rowBatch
+		}
+
+		if rowCount > 0 {
+			metrics.RowsRead.WithLabelValues(truckName, table, op).Add(float64(rowCount))
 		}
 	}()
 
@@ -164,6 +181,7 @@ func (r *Reader) prepareTempTable(conn *pgxpool.Conn, changes *db.Changes, colum
 	_, err := conn.Exec(context.Background(), sb.String())
 	if err != nil {
 		log.Printf("[Postgres Reader] Error executing SQL:\n%s", sb.String())
+		metrics.DBErrors.WithLabelValues("postgres", "reader").Inc()
 		panic(err)
 	}
 
@@ -188,6 +206,7 @@ func insertToTempTable(conn *pgxpool.Conn, baseSql string, columns []db.Column, 
 
 	_, err := conn.Exec(context.Background(), sb.String(), flatValues...)
 	if err != nil {
+		metrics.DBErrors.WithLabelValues("postgres", "reader").Inc()
 		panic(err)
 	}
 }

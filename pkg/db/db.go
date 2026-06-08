@@ -2,6 +2,7 @@ package db
 
 import (
 	"fmt"
+	"time"
 )
 
 const (
@@ -24,6 +25,7 @@ type Changes struct {
 
 type Transaction struct {
 	StreamPosition uint64
+	CommitTime     time.Time // zero if the source didn't supply a commit timestamp
 	Changes        chan *Changes
 }
 

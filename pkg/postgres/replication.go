@@ -6,6 +6,7 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/jackc/pglogrepl"
@@ -15,16 +16,17 @@ import (
 
 	"github.com/tonyfg/trucker/pkg/config"
 	"github.com/tonyfg/trucker/pkg/db"
+	"github.com/tonyfg/trucker/pkg/metrics"
 )
 
 // Subscriber represents one truck that wants to receive transactions from a replication stream.
 type Subscriber struct {
-	Name        string
-	Tables      map[string]bool
-	Ch          chan db.Transaction
-	LsnFlushCh  chan<- uint64 // receives AutoAdvance LSNs for deferred ClickHouse flush; nil means ignored
-	StartLSN    uint64        // initial LSN seeded into the per-truck ack map
-	Done        <-chan any    // closed when the truck is shutting down; nil means ignored
+	Name       string
+	Tables     map[string]bool
+	Ch         chan db.Transaction
+	LsnFlushCh chan<- uint64 // receives AutoAdvance LSNs for deferred ClickHouse flush; nil means ignored
+	StartLSN   uint64        // initial LSN seeded into the per-truck ack map
+	Done       <-chan any    // closed when the truck is shutting down; nil means ignored
 }
 
 type ReplicationClient struct {
@@ -37,6 +39,7 @@ type ReplicationClient struct {
 	done            chan struct{}
 	doneChan        chan struct{}
 	columnsCache    map[string][]db.Column
+	clientXLogPos   atomic.Uint64 // updated atomically from the stream goroutine
 
 	mu               sync.Mutex
 	closeOnce        sync.Once
@@ -85,6 +88,13 @@ func (rc *ReplicationClient) AckLSN(name string, lsn uint64) {
 		rc.recomputeMinLSN()
 	}
 	rc.mu.Unlock()
+
+	current := rc.clientXLogPos.Load()
+	if current >= lsn {
+		metrics.ReplicationLagBytes.WithLabelValues(rc.connCfg.Name, name).Set(float64(current - lsn))
+	} else {
+		metrics.ReplicationLagBytes.WithLabelValues(rc.connCfg.Name, name).Set(0)
+	}
 }
 
 // AutoAdvance is called by the parser for subscribers that had no rows in a committed xid.
@@ -97,6 +107,8 @@ func (rc *ReplicationClient) AutoAdvance(name string, lsn uint64) {
 		rc.recomputeMinLSN()
 	}
 	rc.mu.Unlock()
+
+	metrics.AutoAdvances.WithLabelValues(name).Inc()
 
 	if sub, ok := rc.subscriberByName[name]; ok && sub.LsnFlushCh != nil {
 		select {
@@ -214,11 +226,12 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) {
 				parser.closeSubscribers()
 				rc.streamConn.Close(context.Background())
 			}
-			rc.running = false  // must happen before close(doneChan) for WaitDone callers
+			rc.running = false // must happen before close(doneChan) for WaitDone callers
 			close(rc.doneChan)
 		}()
 
 		clientXLogPos := startLSN
+		rc.clientXLogPos.Store(uint64(startLSN))
 		standbyMessageTimeout := time.Second * 10
 		nextStandbyMessageDeadline := time.Now().Add(standbyMessageTimeout)
 
@@ -239,6 +252,7 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) {
 					pglogrepl.StandbyStatusUpdate{WALWritePosition: confirmLSN},
 				)
 				if err != nil {
+					metrics.ReplicationErrors.WithLabelValues(rc.connCfg.Name, "standby_status").Inc()
 					log.Fatalln("SendStandbyStatusUpdate failed:", err)
 				}
 				nextStandbyMessageDeadline = time.Now().Add(standbyMessageTimeout)
@@ -257,10 +271,12 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) {
 				if pgconn.Timeout(err) {
 					continue
 				}
+				metrics.ReplicationErrors.WithLabelValues(rc.connCfg.Name, "receive_message").Inc()
 				log.Fatalln("ReceiveMessage failed:", err)
 			}
 
 			if errMsg, ok := rawMsg.(*pgproto3.ErrorResponse); ok {
+				metrics.ReplicationErrors.WithLabelValues(rc.connCfg.Name, "wal_error").Inc()
 				log.Fatalf("received Postgres WAL error: %+v", errMsg)
 			}
 
@@ -273,10 +289,12 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) {
 			case pglogrepl.PrimaryKeepaliveMessageByteID:
 				pkm, err := pglogrepl.ParsePrimaryKeepaliveMessage(msg.Data[1:])
 				if err != nil {
+					metrics.ReplicationErrors.WithLabelValues(rc.connCfg.Name, "parse_keepalive").Inc()
 					log.Fatalln("ParsePrimaryKeepaliveMessage failed:", err)
 				}
 				if pkm.ServerWALEnd > clientXLogPos {
 					clientXLogPos = pkm.ServerWALEnd
+					rc.clientXLogPos.Store(uint64(clientXLogPos))
 				}
 				if pkm.ReplyRequested {
 					nextStandbyMessageDeadline = time.Time{}
@@ -285,6 +303,7 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) {
 			case pglogrepl.XLogDataByteID:
 				xld, err := pglogrepl.ParseXLogData(msg.Data[1:])
 				if err != nil {
+					metrics.ReplicationErrors.WithLabelValues(rc.connCfg.Name, "parse_xlog").Inc()
 					log.Fatalln("ParseXLogData failed:", err)
 				}
 
@@ -292,6 +311,7 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) {
 
 				if xld.WALStart > clientXLogPos {
 					clientXLogPos = xld.WALStart
+					rc.clientXLogPos.Store(uint64(clientXLogPos))
 				}
 
 				if endLSN != 0 && xld.WALStart >= endLSN {
@@ -510,6 +530,7 @@ func (rc *ReplicationClient) createReplicationSlot(temporary bool) string {
 }
 
 func (rc *ReplicationClient) ResetStreamConn() {
+	metrics.ReplicationRestarts.WithLabelValues(rc.connCfg.Name).Inc()
 	rc.streamConn.Close(context.Background())
 	rc.streamConn = rc.connect(true)
 }

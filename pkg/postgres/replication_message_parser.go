@@ -3,6 +3,7 @@ package postgres
 import (
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/jackc/pglogrepl"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -103,10 +104,10 @@ func (p *ReplicationMessageParser) processMsg(msg pglogrepl.Message, streamPosit
 		p.routeRow(tableName, db.Delete, cols, append(newRow, oldRow...))
 
 	case *pglogrepl.CommitMessage:
-		p.commitAll(streamPosition)
+		p.commitAll(streamPosition, logicalMsg.CommitTime)
 
 	case *pglogrepl.StreamCommitMessageV2:
-		p.commitAll(streamPosition)
+		p.commitAll(streamPosition, logicalMsg.CommitTime)
 		p.inStream = false
 
 	case *pglogrepl.StreamStopMessageV2:
@@ -137,13 +138,14 @@ func (p *ReplicationMessageParser) processMsg(msg pglogrepl.Message, streamPosit
 	}
 }
 
-func (p *ReplicationMessageParser) commitAll(commitLSN uint64) {
+func (p *ReplicationMessageParser) commitAll(commitLSN uint64, commitTime time.Time) {
 	for _, sc := range p.subs {
 		if sc.open != nil {
 			close(sc.open.Rows)
 			sc.open = nil
 		}
 		if sc.txn != nil {
+			sc.txn.CommitTime = commitTime
 			close(sc.txn.Changes)
 			sc.txn = nil
 		} else {

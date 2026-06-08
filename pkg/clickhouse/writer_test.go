@@ -165,5 +165,5 @@ func writerTestSetup() *Writer {
 		panic(err)
 	}
 
-	return NewWriter("test", string(sqlTemplate), helpers.ClickhouseCfg, "2")
+	return NewWriter("test", "test", string(sqlTemplate), helpers.ClickhouseCfg, "2")
 }
