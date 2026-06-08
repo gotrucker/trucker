@@ -2,7 +2,7 @@ ARG GO_VERSION=1.26
 ARG GO_IMAGE=golang:${GO_VERSION}-alpine
 
 FROM --platform=${BUILDPLATFORM} $GO_IMAGE AS dev
-RUN apk add --no-cache postgresql17-client delve make git
+RUN apk add --no-cache postgresql17-client delve make gcc build-base git
 RUN adduser -D trucker
 USER trucker
 RUN mkdir -p /tmp/go-cache

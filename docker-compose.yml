@@ -16,6 +16,7 @@ services:
     - go_cache:/tmp/go-cache
     environment:
       GOPATH: /tmp/go-cache
+      CGO_ENABLED: 1
     env_file:
     - .env
     working_dir: /app

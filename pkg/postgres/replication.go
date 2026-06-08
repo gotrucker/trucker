@@ -39,6 +39,7 @@ type ReplicationClient struct {
 	columnsCache    map[string][]db.Column
 
 	mu               sync.Mutex
+	closeOnce        sync.Once
 	truckLSNs        map[string]uint64
 	minTruckLSN      pglogrepl.LSN
 	subscribers      []Subscriber
@@ -213,8 +214,8 @@ func (rc *ReplicationClient) Start(startPosition uint64, endPosition uint64) {
 				parser.closeSubscribers()
 				rc.streamConn.Close(context.Background())
 			}
+			rc.running = false  // must happen before close(doneChan) for WaitDone callers
 			close(rc.doneChan)
-			rc.running = false
 		}()
 
 		clientXLogPos := startLSN
@@ -328,13 +329,21 @@ func (rc *ReplicationClient) Close() {
 	case <-rc.done:
 	default:
 		close(rc.done)
+		if rc.streamConn != nil {
+			// Unblock any in-progress ReceiveMessage so the Start goroutine sees rc.done quickly.
+			// SetDeadline is safe to call concurrently with I/O.
+			rc.streamConn.PgConn().Conn().SetDeadline(time.Now())
+		}
 	}
-	if rc.conn != nil {
-		rc.conn.Close(context.Background())
-	}
-	if rc.streamConn != nil {
-		rc.streamConn.Close(context.Background())
-	}
+	<-rc.doneChan // wait for the Start goroutine to exit before touching connections
+	rc.closeOnce.Do(func() {
+		if rc.conn != nil {
+			rc.conn.Close(context.Background())
+		}
+		if rc.streamConn != nil {
+			rc.streamConn.Close(context.Background())
+		}
+	})
 }
 
 func (rc *ReplicationClient) setupPublication() []string {

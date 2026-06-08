@@ -6,6 +6,7 @@ DROP PUBLICATION IF EXISTS trucker_trucker_2;
 SELECT pg_terminate_backend(active_pid) FROM pg_replication_slots;
 SELECT pg_drop_replication_slot(slot_name) FROM pg_replication_slots;
 
+DROP TYPE IF EXISTS age_category CASCADE;
 CREATE TYPE age_category AS ENUM ('young', 'middle-aged', 'old');
 
 CREATE TABLE public.countries (

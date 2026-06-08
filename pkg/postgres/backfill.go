@@ -94,14 +94,14 @@ WHERE table_schema = $1
 	// TODO This go routine is basically the same between reader and backfill. Refactor to avoid dups
 	go func() {
 		defer func() {
+			close(rowChan) // runs last so callers can't reach Close() before Rollback completes
+		}()
+		defer rows.Close()
+		defer func() {
 			err := tx.Rollback(ctx)
 			if err != nil && rc.running {
 				panic(err)
 			}
-		}()
-		defer rows.Close()
-		defer func() {
-			close(rowChan)
 		}()
 
 		rowBatch := make([][]any, 0, batchSize/len(columns))

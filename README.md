@@ -136,6 +136,23 @@ SELECT id, name, email, last_login_at, order_count
 FROM {{ .rows }}
 ```
 
+## Upgrading
+
+### Minor and patch releases (same major version)
+
+All releases within the same major version are backwards compatible. To upgrade, replace the binary or container image and relaunch Trucker — no other steps required.
+
+### v0 → v1
+
+V1 migrates from the `wal2json` replication plugin to `pgoutput` v2, which streams large transactions incrementally as changes are made rather than buffering the entire transaction until commit. Existing replication slots cannot be converted between plugins, so a full backfill is required.
+
+Steps to migrate:
+
+1. Stop Trucker.
+2. Delete the old `wal2json` replication slots from each input PostgreSQL database.
+3. Prepare the output database(s): either truncate/drop the destination tables so the backfill can repopulate them cleanly, or point your pipeline configs at new output databases.
+4. Start the new Trucker v1 binary or container image — it will create fresh `pgoutput` replication slots, perform a backfill from scratch, and then resume streaming replication.
+
 ## Observability
 
 Not implemented yet. Trucker will provide observability capabilities through:
