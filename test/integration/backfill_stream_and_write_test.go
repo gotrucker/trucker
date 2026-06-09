@@ -107,7 +107,7 @@ got %T %v`, expectedRows, expectedRows, rows, rows)
 	// TODO: Check that LSN moved forward
 
 	// Now let's stream Jack Daniels
-	transactionChan := make(chan db.Transaction, 10)
+	transactionChan := make(chan *db.Transaction, 10)
 	rc.Register(postgres.Subscriber{
 		Name:   "test",
 		Tables: map[string]bool{"public.whiskies": true},

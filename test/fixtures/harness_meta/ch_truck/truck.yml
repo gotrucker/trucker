@@ -1,0 +1,6 @@
+input:
+  connection: pg_in
+  table: public.widgets
+output:
+  connection: ch_out
+  table: hm_meta_ch.widgets_flat

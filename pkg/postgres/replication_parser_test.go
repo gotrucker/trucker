@@ -95,7 +95,7 @@ func drainChanges(ch chan *db.Changes) []*db.Changes {
 // TestParseStreamMsg covers STREAM_START → inserts → STREAM_STOP → resume → STREAM_COMMIT.
 // Verifies a single subscriber receives one transaction containing two Change batches.
 func TestParseStreamMsg(t *testing.T) {
-	ch := make(chan db.Transaction, 10)
+	ch := make(chan *db.Transaction, 10)
 	var advanced []struct {
 		name string
 		lsn  uint64
@@ -121,8 +121,8 @@ func TestParseStreamMsg(t *testing.T) {
 
 	select {
 	case txn := <-ch:
-		if txn.StreamPosition != 100 {
-			t.Errorf("expected StreamPosition=100, got %d", txn.StreamPosition)
+		if txn.StreamPosition != 200 {
+			t.Errorf("expected StreamPosition=200, got %d", txn.StreamPosition)
 		}
 		changes := drainChanges(txn.Changes)
 		if len(changes) != 2 {
@@ -149,7 +149,7 @@ func TestParseStreamMsg(t *testing.T) {
 
 // TestParseStreamAbort verifies STREAM_ABORT closes in-flight channels without emitting autoAdvance.
 func TestParseStreamAbort(t *testing.T) {
-	ch := make(chan db.Transaction, 10)
+	ch := make(chan *db.Transaction, 10)
 	p := newTestParser(noAdvance(t), Subscriber{Name: "truck1", Tables: map[string]bool{"public.whiskies": true}, Ch: ch})
 
 	rel := parserRelation(1, "public", "whiskies", parserCol("id"))
@@ -176,8 +176,8 @@ func TestParseStreamAbort(t *testing.T) {
 
 // TestParserMultiSubscriber_SameTable verifies both subscribers on the same table receive all rows independently.
 func TestParserMultiSubscriber_SameTable(t *testing.T) {
-	chA := make(chan db.Transaction, 10)
-	chB := make(chan db.Transaction, 10)
+	chA := make(chan *db.Transaction, 10)
+	chB := make(chan *db.Transaction, 10)
 	p := newTestParser(noAdvance(t),
 		Subscriber{Name: "truckA", Tables: map[string]bool{"public.x": true}, Ch: chA},
 		Subscriber{Name: "truckB", Tables: map[string]bool{"public.x": true}, Ch: chB},
@@ -190,7 +190,7 @@ func TestParserMultiSubscriber_SameTable(t *testing.T) {
 	p.processMsg(parserInsert(1, "world"), 12)
 	p.processMsg(parserStreamCommit(1), 50)
 
-	for label, ch := range map[string]chan db.Transaction{"truckA": chA, "truckB": chB} {
+	for label, ch := range map[string]chan *db.Transaction{"truckA": chA, "truckB": chB} {
 		select {
 		case txn := <-ch:
 			changes := drainChanges(txn.Changes)
@@ -210,8 +210,8 @@ func TestParserMultiSubscriber_SameTable(t *testing.T) {
 
 // TestParserMultiSubscriber_DisjointTables verifies that each subscriber only sees rows from its own table.
 func TestParserMultiSubscriber_DisjointTables(t *testing.T) {
-	chA := make(chan db.Transaction, 10)
-	chB := make(chan db.Transaction, 10)
+	chA := make(chan *db.Transaction, 10)
+	chB := make(chan *db.Transaction, 10)
 	p := newTestParser(noAdvance(t),
 		Subscriber{Name: "truckA", Tables: map[string]bool{"public.whiskies": true}, Ch: chA},
 		Subscriber{Name: "truckB", Tables: map[string]bool{"public.spirits": true}, Ch: chB},
@@ -262,8 +262,8 @@ func TestParserMultiSubscriber_DisjointTables(t *testing.T) {
 // TestParserAutoAdvanceOnIdleSubscriber verifies that a subscriber with no rows in a committed xid
 // receives an autoAdvance call instead of a transaction.
 func TestParserAutoAdvanceOnIdleSubscriber(t *testing.T) {
-	chA := make(chan db.Transaction, 10)
-	chB := make(chan db.Transaction, 10)
+	chA := make(chan *db.Transaction, 10)
+	chB := make(chan *db.Transaction, 10)
 
 	var advancedFor string
 	var advancedLSN uint64
@@ -303,7 +303,7 @@ func TestParserAutoAdvanceOnIdleSubscriber(t *testing.T) {
 
 // TestParserFlushAllOnEarlyExit verifies that flushAll closes in-flight channels so consumers unblock.
 func TestParserFlushAllOnEarlyExit(t *testing.T) {
-	ch := make(chan db.Transaction, 10)
+	ch := make(chan *db.Transaction, 10)
 	p := newTestParser(noAdvance(t), Subscriber{Name: "truck1", Tables: map[string]bool{"public.x": true}, Ch: ch})
 
 	rel := parserRelation(1, "public", "x", parserCol("v"))

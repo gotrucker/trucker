@@ -21,9 +21,16 @@ import (
 
 // Subscriber represents one truck that wants to receive transactions from a replication stream.
 type Subscriber struct {
-	Name       string
-	Tables     map[string]bool
-	Ch         chan db.Transaction
+	Name   string
+	Tables map[string]bool
+	// Ch carries a *pointer* to the transaction on purpose. The parser delivers the
+	// transaction lazily (on its first row, see ensureTxn) but only learns the commit
+	// LSN and commit time later, when the COMMIT message arrives (see commitAll). It
+	// then mutates StreamPosition/CommitTime on the already-delivered struct. Sending a
+	// value copy here would hide those mutations from the subscriber, so it would ack the
+	// begin LSN instead of the commit LSN. Keep this a pointer. The write (commitAll)
+	// happens-before the read (truck.go, after draining Changes) via the Changes close.
+	Ch         chan *db.Transaction
 	LsnFlushCh chan<- uint64 // receives AutoAdvance LSNs for deferred ClickHouse flush; nil means ignored
 	StartLSN   uint64        // initial LSN seeded into the per-truck ack map
 	Done       <-chan any    // closed when the truck is shutting down; nil means ignored

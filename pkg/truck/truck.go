@@ -28,7 +28,7 @@ type Truck struct {
 	Writer               db.Writer
 	OutputSql            string
 	SlowQueryThresholdMs int64
-	TransactionChan      chan db.Transaction
+	TransactionChan      chan *db.Transaction
 	LsnFlushCh           chan uint64 // receives AutoAdvance LSNs; debounced before flushing to output
 	KillChan             chan any
 	DoneChan             chan ExitMsg
@@ -45,7 +45,7 @@ func NewTruck(cfg config.Truck, rc *postgres.ReplicationClient, connCfgs map[str
 		InputTables:          cfg.Input.Tables,
 		Writer:               NewWriter(cfg.Name, cfg.Input.Connection, cfg.Output.Sql, connCfgs[cfg.Output.Connection], uniqueId),
 		SlowQueryThresholdMs: cfg.SlowQueryThresholdMs,
-		TransactionChan:      make(chan db.Transaction),
+		TransactionChan:      make(chan *db.Transaction),
 		LsnFlushCh:           make(chan uint64, 1),
 		KillChan:             make(chan any),
 		DoneChan:             doneChan,

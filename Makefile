@@ -2,7 +2,7 @@
 .EXPORT_ALL_VARIABLES:
 .ONESHELL:
 .NOTPARALLEL:
-.PHONY: dev stop sh clean test test-gnarly fmt build_images push_images
+.PHONY: dev stop sh clean test test-harness test-gnarly fmt build_images push_images
 
 # Export UID/GID to make dev containers run with the same UID/GID as the local
 # user

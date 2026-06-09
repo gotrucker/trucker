@@ -1,0 +1,22 @@
+unique_id: _hmeta
+connections:
+- name: pg_in
+  adapter: postgres
+  host: pg_input
+  database: hm_meta_in
+  user: trucker
+  pass: pgpass
+  ssl: disable
+- name: pg_out
+  adapter: postgres
+  host: pg_output
+  database: hm_meta_out
+  user: trucker
+  pass: pgpass
+  ssl: disable
+- name: ch_out
+  adapter: clickhouse
+  host: clickhouse
+  database: hm_meta_ch
+  user: trucker
+  pass: trucker

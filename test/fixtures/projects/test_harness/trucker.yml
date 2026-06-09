@@ -1,0 +1,16 @@
+unique_id: _harness
+connections:
+- name: pg_input_conn
+  adapter: postgres
+  host: {{ or .PG_HOST "pg_input" }}
+  database: trucker_harness_input
+  user: trucker
+  pass: pgpass
+  ssl: disable
+- name: pg_output_conn
+  adapter: postgres
+  host: {{ or .PG_OUTPUT_HOST "pg_output" }}
+  database: trucker_harness_output
+  user: trucker
+  pass: pgpass
+  ssl: disable

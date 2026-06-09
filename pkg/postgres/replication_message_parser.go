@@ -145,6 +145,11 @@ func (p *ReplicationMessageParser) commitAll(commitLSN uint64, commitTime time.T
 			sc.open = nil
 		}
 		if sc.txn != nil {
+			// The txn was delivered to the subscriber at its first row (ensureTxn) with
+			// the begin LSN as a placeholder. Overwrite it with the real commit LSN here,
+			// before closing Changes, so the subscriber acks the commit position. This is
+			// only safe because Ch carries a pointer (see Subscriber.Ch).
+			sc.txn.StreamPosition = commitLSN
 			sc.txn.CommitTime = commitTime
 			close(sc.txn.Changes)
 			sc.txn = nil
@@ -185,7 +190,7 @@ func (p *ReplicationMessageParser) ensureTxn(sc *subscriberCtx) bool {
 		Changes:        make(chan *db.Changes, 128),
 	}
 	select {
-	case sc.sub.Ch <- *txn:
+	case sc.sub.Ch <- txn:
 		sc.txn = txn
 		return true
 	case <-sc.sub.Done: // nil channel: never selected — safe for subscribers without a Done channel

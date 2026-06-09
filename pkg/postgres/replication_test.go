@@ -58,7 +58,7 @@ func TestStart(t *testing.T) {
 		t.Error(err)
 	}
 
-	ch := make(chan db.Transaction, 10)
+	ch := make(chan *db.Transaction, 10)
 	rc.Register(Subscriber{Name: "test", Tables: map[string]bool{"public.countries": true}, Ch: ch})
 	rc.Start(backfillLSN, 0)
 
@@ -206,7 +206,7 @@ VALUES (33, false, '2013-12-11', '193.137.213.0/24', '{"some": "thing"}', '2032-
 		t.Error(err)
 	}
 
-	ch := make(chan db.Transaction, 10)
+	ch := make(chan *db.Transaction, 10)
 	rc.Register(Subscriber{Name: "test", Tables: map[string]bool{"public.weird_types": true}, Ch: ch})
 	rc.Start(backfillLSN, 0)
 

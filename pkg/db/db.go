@@ -24,7 +24,7 @@ type Changes struct {
 }
 
 type Transaction struct {
-	StreamPosition uint64
+	StreamPosition uint64    // commit LSN for this transaction
 	CommitTime     time.Time // zero if the source didn't supply a commit timestamp
 	Changes        chan *Changes
 }

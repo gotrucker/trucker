@@ -1,0 +1,5 @@
+input:
+  connection: pg_input_conn
+  table: public.widgets
+output:
+  connection: pg_output_conn

@@ -136,6 +136,24 @@ SELECT id, name, email, last_login_at, order_count
 FROM {{ .rows }}
 ```
 
+## Testing Pipelines
+
+Trucker includes a SQL-only test harness for pipeline tests. Generate a scaffold with:
+
+```bash
+trucker -gen test <truck> <test_name>
+```
+
+Run tests with:
+
+```bash
+trucker -test run
+trucker -test run <truck>
+trucker -test run <truck> <test_name>
+```
+
+Each test lives under `<truck>/tests/<test_name>/` and contains `input_db_seed.sql`, `output_db_seed.sql`, `stream_statements.sql`, and `expectations.sql`. Test databases are derived automatically as `<configured_database>_test` and are preserved between runs for debugging. See [docs/test-harness.md](docs/test-harness.md) for details and privilege requirements.
+
 ## Upgrading
 
 ### Minor and patch releases (same major version)
